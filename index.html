@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#111827">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111827'/%3E%3Cg fill='none' stroke='%2367d9ff' stroke-width='10' stroke-linecap='round' stroke-linejoin='round' transform='translate(8 14) scale(.4)'%3E%3Cpath d='M60 40 V32 C60 32 72 30 72 20 C72 12 66 8 60 8 C54 8 49 12 49 17'/%3E%3Cpath d='M60 40 L10 66 Q4 70 10 76 H110 Q116 70 110 66 Z'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@700;800&family=Montserrat:wght@500&display=swap">
 <title>Shal Store</title>
 <style>
 *{box-sizing:border-box}
@@ -14,6 +16,9 @@ button:active{opacity:.8}
 /* القايمة الجانبية: بتتبع اتجاه الصفحة (يمين في العربي، يسار في الإنجليزي) */
 aside{position:fixed;inset-inline-start:0;top:0;bottom:0;width:230px;background:#111827;color:#fff;padding:22px;overflow-y:auto}
 aside h2{text-align:center;color:#67d9ff;margin:8px 0 32px}
+.logo{display:block;width:150px;height:auto;margin:0 auto 28px}
+.loginlogo{display:block;width:170px;height:auto;flex:0 0 auto}
+.printlogo{display:block;width:150px;height:auto;margin:0 auto 6px}
 nav{display:grid;gap:9px}
 nav button,aside>button{background:#1d293b;color:#fff;width:100%;text-align:start;margin-bottom:8px}
 main{margin-inline-start:230px;padding:25px}
@@ -93,6 +98,7 @@ header h1{margin:0}
 @media(max-width:760px){
   aside{position:static;width:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
   aside h2{margin:0 0 4px}
+  .logo{width:110px;margin:0 auto 4px}
   nav{display:flex;overflow-x:auto;gap:8px;padding-bottom:4px}
   nav button{width:auto;white-space:nowrap;margin:0;flex:0 0 auto}
   aside>button{width:auto;align-self:flex-start;margin:0}
@@ -107,7 +113,7 @@ header h1{margin:0}
 }
 
 /* شاشة الدخول */
-.login{position:fixed;inset:0;background:#111827;display:flex;align-items:center;justify-content:center;z-index:50;padding:14px}
+.login{position:fixed;inset:0;background:#111827;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;z-index:50;padding:14px;overflow-y:auto}
 .login form{background:#fff;border-radius:14px;padding:26px;width:min(380px,100%);display:grid;gap:10px}
 .login h2{margin:0 0 6px;text-align:center}
 .login label{display:grid;gap:5px;font-size:14px}
@@ -117,7 +123,7 @@ header h1{margin:0}
 </head>
 <body>
 <aside>
-<h2>ElShal Store</h2>
+<svg class="logo" viewBox="0 0 200 130" role="img" aria-label="ElShal Store" style="direction:ltr;"><g transform="translate(60 2) scale(0.66)" fill="none" stroke="#67d9ff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M60 40 V32 C60 32 72 30 72 20 C72 12 66 8 60 8 C54 8 49 12 49 17"/><path d="M60 40 L10 66 Q4 70 10 76 H110 Q116 70 110 66 Z"/></g><text x="100" y="98" text-anchor="middle" font-family="Cairo,Tahoma,Arial,sans-serif" font-weight="800" font-size="32" fill="#ffffff">ElShal</text><text x="103" y="121" text-anchor="middle" font-family="Montserrat,Arial,sans-serif" font-weight="500" font-size="11" letter-spacing="6" fill="#67d9ff">STORE</text></svg>
 <nav>
 <button id="navDashboard" onclick="showPage('dashboard')">🏠 الرئيسية</button>
 <button id="navProducts" onclick="showPage('products')">📦 المنتجات</button>
@@ -166,6 +172,7 @@ header h1{margin:0}
 </div>
 
 <div id="loginScreen" class="login hidden">
+<svg class="loginlogo" viewBox="0 0 200 130" role="img" aria-label="ElShal Store" style="direction:ltr;"><g transform="translate(60 2) scale(0.66)" fill="none" stroke="#67d9ff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M60 40 V32 C60 32 72 30 72 20 C72 12 66 8 60 8 C54 8 49 12 49 17"/><path d="M60 40 L10 66 Q4 70 10 76 H110 Q116 70 110 66 Z"/></g><text x="100" y="98" text-anchor="middle" font-family="Cairo,Tahoma,Arial,sans-serif" font-weight="800" font-size="32" fill="#ffffff">ElShal</text><text x="103" y="121" text-anchor="middle" font-family="Montserrat,Arial,sans-serif" font-weight="500" font-size="11" letter-spacing="6" fill="#67d9ff">STORE</text></svg>
 <form onsubmit="doLogin();return false">
 <h2 id="loginTitle">تسجيل الدخول</h2>
 <div id="loginErr" class="error"></div>
@@ -577,7 +584,7 @@ async function deleteInvoice(id){
 /* الطباعة: الفاتورة بس */
 function invoiceHTML(inv){
   const ra=returnedAmount(inv);
-  return `<div class="printbox"><h2>Shal Store</h2><p class="sub">${t('invoiceNo')} ${inv.no}</p>
+  return `<div class="printbox"><svg class="printlogo" viewBox="0 0 200 130" role="img" aria-label="ElShal Store" style="direction:ltr;"><g transform="translate(60 2) scale(0.66)" fill="none" stroke="#111111" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M60 40 V32 C60 32 72 30 72 20 C72 12 66 8 60 8 C54 8 49 12 49 17"/><path d="M60 40 L10 66 Q4 70 10 76 H110 Q116 70 110 66 Z"/></g><text x="100" y="98" text-anchor="middle" font-family="Cairo,Tahoma,Arial,sans-serif" font-weight="800" font-size="32" fill="#111111">ElShal</text><text x="103" y="121" text-anchor="middle" font-family="Montserrat,Arial,sans-serif" font-weight="500" font-size="11" letter-spacing="6" fill="#111111">STORE</text></svg><p class="sub">${t('invoiceNo')} ${inv.no}</p>
   <div>${t('date')}: <b>${esc(fmtInv(inv))}</b></div><div>${t('customer')}: <b>${esc(inv.customer||t('walkIn'))}</b></div><div>${t('payment')}: <b>${payLabel(inv.payment)}</b></div>
   <table><tr><th>${t('name')}</th><th>${t('price')}</th><th>${t('qty')}</th><th>${t('total')}</th></tr>${inv.items.map(x=>`<tr><td>${esc(x.name)}</td><td>${money(x.price)}</td><td>${x.q}</td><td>${money(x.price*x.q)}</td></tr>`).join('')}</table>
   <div class="sum">${inv.discount>0?`<div><span>${t('subtotal')}</span><span>${money(inv.subtotal)}</span></div><div><span>${t('discount')}${inv.discType==='percent'&&inv.discValue>0?' ('+inv.discValue+'%)':''}</span><span>- ${money(inv.discount)}</span></div>`:''}<div class="grand"><span>${t('total')}</span><span>${money(inv.total)}</span></div>${ra>0?`<div><span>${t('refund')}</span><span>- ${money(ra)}</span></div><div class="grand"><span>${t('netTotal')}</span><span>${money(netOf(inv))}</span></div>`:''}</div></div>`;
