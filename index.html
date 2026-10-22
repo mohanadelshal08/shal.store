@@ -139,6 +139,16 @@ body.dark .hint{background:#16294a;color:#dbe7ff}
 body.dark .totals .grand{border-color:#33425e}
 @media print{body.dark{background:#fff;color:#000}}
 .login form{color:#172033}
+
+/* الأقساط */
+.badge{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;background:#e8ebf0;color:#172033;white-space:nowrap}
+.badge.ok{background:#dcfce7;color:#166534}
+.badge.warn{background:#fee2e2;color:#991b1b}
+.badge.mid{background:#fef3c7;color:#92400e}
+body.dark .badge{background:#26344d;color:#e5e7eb}
+body.dark .badge.ok{background:#14532d;color:#bbf7d0}
+body.dark .badge.warn{background:#4a1d24;color:#ffb4b4}
+body.dark .badge.mid{background:#4a3410;color:#fde68a}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -152,6 +162,7 @@ body.dark .totals .grand{border-color:#33425e}
 <button id="navStock" onclick="showPage('stock')">📊 المخزون</button>
 <button id="navFactories" onclick="showPage('factories')">🏭 المصانع</button>
 <button id="navReports" onclick="showPage('reports')">📈 التقارير</button>
+<button id="navInstallments" onclick="showPage('installments')">💳 الأقساط</button>
 </nav>
 <button id="navSettings" onclick="showPage('settings')">⚙️ الإعدادات</button>
 <button id="logoutBtn" onclick="logout()">خروج</button>
@@ -234,11 +245,11 @@ const T={
   restoreConfirm:'This adds the file data to the database: existing invoices are not duplicated, and products with the same ID are updated from the file. Continue?',loginTitle:'Sign in',email:'Email',password:'Password',login:'Sign in',logout:'Sign out',loginFailed:'Wrong email or password',loading:'Loading...',connError:'Could not reach the database',notConfigured:'Set SUPABASE_URL and SUPABASE_KEY at the top of the page script',errAuth:'Session expired, please sign in again',errNotFound:'Item not found (maybe deleted on another device). Tap refresh',dupError:'Duplicate data (invoice number or name already exists)',legacyFound:'Found old data saved on this device. Upload it to the database now?',refreshTip:'Refresh data',codeExists:'' }
 };
 
-let db={products:[],invoices:[],factories:[],lang:loadLang()}, currentPage='dashboard', salesTab='new', cart=[], editingId=null, invQuery='';
+let db={products:[],invoices:[],factories:[],plans:[],dues:[],ipays:[],instOk:false,lang:loadLang()}, currentPage='dashboard', salesTab='new', cart=[], editingId=null, invQuery='';
 let draft=newDraft();
 
 /* ---------- أدوات عامة ---------- */
-function newDraft(){return {customer:'',payment:'cash',discType:'amount',discValue:''}}
+function newDraft(){return {customer:'',payment:'cash',discType:'amount',discValue:'',inst:false,down:'',count:'3',unit:'month',n:'1',first:''}}
 function t(k){return (T[db.lang]||T.ar)[k]||k}
 function el(id){return document.getElementById(id)}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -345,6 +356,7 @@ async function refresh(){
   const [p,f,i]=await Promise.all([fetchAll('products',['created_at','id']),fetchAll('factories',['name']),fetchAll('invoices',['id'])]);
   const n=normalizeDB({products:p,factories:f.map(x=>x.name),invoices:i.map(rowToInv)});
   db.products=n.products;db.factories=n.factories;db.invoices=n.invoices;
+  await refreshInst();
 }
 async function reloadData(){const ok=await run(async()=>{await refresh();return true});if(ok)render()}
 
@@ -382,7 +394,7 @@ async function doLogin(){
 async function logout(){
   if(!sb)return;
   await sb.auth.signOut();
-  db.products=[];db.invoices=[];db.factories=[];cart=[];
+  db.products=[];db.invoices=[];db.factories=[];db.plans=[];db.dues=[];db.ipays=[];db.instOk=false;cart=[];
   showLogin('');
 }
 async function enterApp(){
@@ -424,7 +436,7 @@ function applyLanguage(){
   document.documentElement.lang=db.lang;document.documentElement.dir=t('dir');
   el('navDashboard').innerHTML='🏠 '+t('dashboard');el('navProducts').innerHTML='📦 '+t('products');el('navSales').innerHTML='🧾 '+t('sales');el('navStock').innerHTML='📊 '+t('stock');el('navFactories').innerHTML='🏭 '+t('factories');el('navReports').innerHTML='📈 '+t('reports');
   el('navSettings').innerHTML='⚙️ '+t('settings');el('backupBtn').textContent=t('backup');el('restoreLabel').childNodes[0].nodeValue=t('restore');
-  el('modalTitle').textContent=t('productModal');
+  el('navInstallments').innerHTML='💳 '+t('installments');el('modalTitle').textContent=t('productModal');
   el('lblCode').childNodes[0].nodeValue=t('code');el('lblName').childNodes[0].nodeValue=t('name');el('lblCategory').childNodes[0].nodeValue=t('category');el('lblFactory').childNodes[0].nodeValue=t('factory');el('lblSize').childNodes[0].nodeValue=t('size');el('lblPrice').childNodes[0].nodeValue=t('price');el('lblQty').childNodes[0].nodeValue=t('qty');
   el('saveProductBtn').textContent=t('saveProduct');el('storeTitle').textContent=' ElShal Store ';
   el('loginTitle').textContent=t('loginTitle');el('lblEmail').textContent=t('email');el('lblPass').textContent=t('password');el('loginBtn').textContent=t('login');el('loginLang').textContent=t('lang');el('logoutBtn').textContent=t('logout');el('refreshBtn').title=t('refreshTip');
@@ -432,7 +444,7 @@ function applyLanguage(){
 function showPage(p){currentPage=p;render()}
 function render(){
   applyLanguage();
-  const pages={dashboard,products,sales,stock,factories,reports,settings};
+  const pages={dashboard,products,sales,stock,factories,reports,installments,settings};
   (pages[currentPage]||dashboard)();
 }
 function toggleLanguage(){db.lang=db.lang==='ar'?'en':'ar';saveLang();render()}
@@ -494,16 +506,17 @@ function sales(){
   el('app').innerHTML=`${salesTabs()}<div class="panel"><h2>${t('invoice')}</h2>
   <div class="grid2">
     <label>${t('customer')}<input id="saleCustomer" value="${esc(draft.customer)}" placeholder="${t('walkIn')}" oninput="draft.customer=this.value"></label>
-    <label>${t('payment')}<select id="salePayment" onchange="draft.payment=this.value">${payOptions(draft.payment)}</select></label>
+    <label>${t('payment')}<select id="salePayment" ${draft.inst?'disabled':''} onchange="draft.payment=this.value">${payOptions(draft.payment)}</select></label>
   </div>
   ${avail.length?`<div class="toolbar"><select id="saleProduct">${avail.map(p=>`<option value="${p.id}">${esc(p.name)} (${esc(p.size)}) — ${money(p.price)} — ${t('available')} ${p.qty}</option>`).join('')}</select><input id="saleQty" type="number" min="1" step="1" value="1" style="max-width:110px"><button class="primary" onclick="addToCart()">${t('add')}</button></div>`:`<p class="muted">${t('noStock')}</p>`}
   <div id="cartTable"></div>
   <div class="grid2" style="margin-top:12px">
     <label>${t('discount')}<div class="row"><select id="saleDiscType" onchange="draft.discType=this.value;drawCart()"><option value="amount" ${draft.discType==='amount'?'selected':''}>${t('discAmount')}</option><option value="percent" ${draft.discType==='percent'?'selected':''}>${t('discPercent')}</option></select><input id="saleDiscValue" type="number" min="0" step="0.01" value="${esc(draft.discValue)}" oninput="draft.discValue=this.value;drawCart()"></div></label>
   </div>
+  ${db.instOk?`<div class="hint"><label style="display:flex;gap:8px;align-items:center;margin:0"><input type="checkbox" id="instOn" style="width:auto" ${draft.inst?'checked':''} onchange="toggleInst(this.checked)"> ${t('sellInstallment')}</label></div><div id="instBox"></div>`:''}
   <div class="totals" id="saleTotals"></div>
   <div class="actions"><button class="primary" onclick="saveInvoice(false)">${t('saveInvoice')}</button><button onclick="saveInvoice(true)">${t('saveAndPrint')}</button></div></div>`;
-  drawCart();
+  drawInstFields();drawCart();
 }
 function addToCart(){
   const p=db.products.find(x=>x.id===el('saleProduct').value),q=Number(el('saleQty').value);
@@ -518,20 +531,32 @@ function drawCart(){
   const sub=round2(cart.reduce((s,x)=>s+x.price*x.q,0)),d=calcDiscount(sub);
   el('cartTable').innerHTML=tbl(`<tr><th>${t('name')}</th><th>${t('price')}</th><th>${t('qty')}</th><th>${t('total')}</th><th></th></tr>${cart.map((x,i)=>`<tr><td>${esc(x.name)}</td><td>${money(x.price)}</td><td>${x.q}</td><td>${money(x.price*x.q)}</td><td><button class="danger" onclick="removeFromCart(${i})">×</button></td></tr>`).join('')}`);
   el('saleTotals').innerHTML=`<div>${t('subtotal')}: <b>${money(sub)}</b></div>`+(d.ok?`<div>${t('discount')}: <b>- ${money(d.amount)}</b></div><div class="grand">${t('total')}: <b id="saleTotal">${money(round2(sub-d.amount))}</b></div>`:`<div class="error">${t(d.err)}</div>`);
+  drawInstPreview();
 }
 async function saveInvoice(andPrint){
   if(!cart.length){alert(t('addFirst'));return}
   for(const x of cart){const p=db.products.find(p=>p.id===x.id);if(!p||x.q>p.qty){alert(t('unavailable')+': '+x.name);return}}
   const subtotal=round2(cart.reduce((s,x)=>s+x.price*x.q,0)),d=calcDiscount(subtotal);
   if(!d.ok){alert(t(d.err));return}
+  let ins=null,planErr=null;
+  if(draft.inst){
+    if(!draft.customer.trim()){alert(t('instNeedCustomer'));return}
+    ins=instInfo(round2(subtotal-d.amount));
+    if(!ins.ok){alert(t(ins.err));return}
+  }
   const payload={customer:draft.customer.trim(),payment:draft.payment,discType:draft.discType,discValue:draft.discValue===''?0:Number(draft.discValue),items:cart.map(x=>({id:x.id,name:x.name,price:x.price,q:x.q}))};
   const inv=await run(async()=>{
     const r=await sb.rpc('create_invoice',{p:payload});if(r.error)throw r.error;
     const row=normalizeDB({invoices:[rowToInv(r.data)]}).invoices[0];
+    if(ins){
+      const pr=await sb.rpc('create_installment_plan',{p:{invoice_id:row.id,customer:row.customer,down:ins.down,financed:ins.financed,count:ins.count,unit:ins.unit,n:ins.n,dues:ins.dues}});
+      if(pr.error)planErr=pr.error;
+    }
     await refresh();return row;
   });
   if(!inv)return;
   cart=[];draft=newDraft();render();
+  if(planErr)alert(t('instPlanFailed').replace('{n}',inv.no)+'\n'+errMsg(planErr));
   if(andPrint)printInvoice(inv);else alert(t('savedInvoice')+' #'+inv.no);
 }
 
@@ -698,6 +723,172 @@ function settings(){
   <label>${t('theme')}<select onchange="setTheme(this.value)"><option value="light" ${theme==='light'?'selected':''}>${t('themeLight')}</option><option value="dark" ${theme==='dark'?'selected':''}>${t('themeDark')}</option></select></label>
   </div></div>`;
 }
+/* ---------- الأقساط ---------- */
+Object.assign(T.ar,{installments:'الأقساط',sellInstallment:'بيع بالقسط',downPayment:'المقدم',instCount:'عدد الأقساط',instEvery:'كل',unitMonth:'شهر',unitWeek:'أسبوع',unitDay:'يوم',firstDue:'تاريخ أول قسط',
+ instNeedCustomer:'اكتب اسم العميل علشان تبيع بالقسط',instDownInvalid:'المقدم غير صحيح',instDownTooMuch:'المقدم لازم يكون أقل من إجمالي الفاتورة',instCountInvalid:'عدد الأقساط غير صحيح',instEveryInvalid:'المدة بين الأقساط غير صحيحة',instDateInvalid:'تاريخ أول قسط غير صحيح',
+ instPlanFailed:'الفاتورة رقم {n} اتحفظت لكن جدول الأقساط ماتسجلش',instNotReady:'مش قادر أحمّل بيانات الأقساط. اتأكد إنك شغّلت ملف installments.sql في Supabase.',
+ installmentPlan:'خطة التقسيط',inFinanced:'المبلغ المقسّط',inAmount:'المبلغ',inDueDate:'الاستحقاق',inPaid:'المدفوع بعد المقدم',inPaidInclDown:'المدفوع (شامل المقدم)',inRemaining:'المتبقي',inNextDue:'القسط القادم',inStatus:'الحالة',
+ inActive:'جاري',inOverdue:'متأخر',inSettled:'مسدد',inPartial:'مدفوع جزئياً',inPaidRow:'مدفوع',inUnpaid:'غير مدفوع',inVoid:'ملغي (مرتجع)',
+ inRecordPay:'تسجيل دفعة',inPayAmount:'مبلغ الدفعة',inPayNote:'ملاحظة (اختياري)',inPayAll:'سداد المتبقي',inPayTooMuch:'المبلغ أكبر من المتبقي',inPayInvalid:'اكتب مبلغ صحيح',inPaysLog:'الدفعات',inConfirmDelPay:'حذف الدفعة دي؟',
+ inNoPlans:'مفيش أقساط',inOutstanding:'إجمالي المتبقي عند العملاء',inOverdueTotal:'إجمالي المتأخر',inActiveCount:'خطط لسه مفتوحة',inPaySaved:'تم تسجيل الدفعة',inNet:'صافي الفاتورة',inSchedule:'جدول الأقساط',inOpenInvoice:'فتح الفاتورة',inDelete:'حذف'});
+Object.assign(T.en,{installments:'Installments',sellInstallment:'Sell on installments',downPayment:'Down payment',instCount:'Number of installments',instEvery:'Every',unitMonth:'month',unitWeek:'week',unitDay:'day',firstDue:'First due date',
+ instNeedCustomer:'Enter the customer name to sell on installments',instDownInvalid:'Invalid down payment',instDownTooMuch:'Down payment must be less than the invoice total',instCountInvalid:'Invalid number of installments',instEveryInvalid:'Invalid interval between installments',instDateInvalid:'Invalid first due date',
+ instPlanFailed:'Invoice #{n} was saved but the installment schedule was not',instNotReady:'Could not load installments data. Make sure you ran installments.sql in Supabase.',
+ installmentPlan:'Installment plan',inFinanced:'Financed amount',inAmount:'Amount',inDueDate:'Due date',inPaid:'Paid after down payment',inPaidInclDown:'Paid (incl. down payment)',inRemaining:'Remaining',inNextDue:'Next due',inStatus:'Status',
+ inActive:'Active',inOverdue:'Overdue',inSettled:'Settled',inPartial:'Partially paid',inPaidRow:'Paid',inUnpaid:'Unpaid',inVoid:'Void (returned)',
+ inRecordPay:'Record payment',inPayAmount:'Payment amount',inPayNote:'Note (optional)',inPayAll:'Pay remaining',inPayTooMuch:'Amount exceeds the remaining balance',inPayInvalid:'Enter a valid amount',inPaysLog:'Payments',inConfirmDelPay:'Delete this payment?',
+ inNoPlans:'No installments',inOutstanding:'Total owed by customers',inOverdueTotal:'Total overdue',inActiveCount:'Open plans',inPaySaved:'Payment recorded',inNet:'Invoice net',inSchedule:'Installment schedule',inOpenInvoice:'Open invoice',inDelete:'Delete'});
+
+let instFilter='active',instQuery='';
+function pad2(n){return String(n).padStart(2,'0')}
+function ymd(y,m0,d){return y+'-'+pad2(m0+1)+'-'+pad2(d)}
+function todayStr(){const d=new Date();return ymd(d.getFullYear(),d.getMonth(),d.getDate())}
+/* التاريخ بعد k فترات من ds (الشهري بيحافظ على اليوم وبيقف عند آخر يوم في الشهر القصير) */
+function addInterval(ds,unit,n,k){
+  const [y,m,d]=ds.split('-').map(Number);
+  if(unit==='month'){
+    const tm=(m-1)+n*k,yy=y+Math.floor(tm/12),mm=((tm%12)+12)%12;
+    return ymd(yy,mm,Math.min(d,new Date(yy,mm+1,0).getDate()));
+  }
+  const dt=new Date(y,m-1,d+(unit==='week'?7:1)*n*k);
+  return ymd(dt.getFullYear(),dt.getMonth(),dt.getDate());
+}
+function fmtDate(ds){const [y,m,d]=String(ds).split('-').map(Number);return new Date(y,m-1,d).toLocaleDateString(locale())}
+function unitLabel(u){return t(u==='week'?'unitWeek':u==='day'?'unitDay':'unitMonth')}
+function unitOptions(sel){return ['month','week','day'].map(u=>`<option value="${u}" ${sel===u?'selected':''}>${unitLabel(u)}</option>`).join('')}
+/* أقساط متساوية، والفرق (لو فيه كسور) بيتحط في آخر قسط */
+function buildSchedule(financed,count,unit,n,first){
+  const base=round2(Math.floor(financed/count*100)/100);
+  const out=[];let acc=0;
+  for(let i=0;i<count;i++){
+    const amt=i===count-1?round2(financed-acc):base;
+    acc=round2(acc+amt);
+    out.push({seq:i+1,date:addInterval(first,unit,n,i),amount:amt});
+  }
+  return out;
+}
+function defaultFirst(){return addInterval(todayStr(),draft.unit,Math.max(1,Math.floor(Number(draft.n))||1),1)}
+function draftTotal(){const sub=round2(cart.reduce((s,x)=>s+x.price*x.q,0)),d=calcDiscount(sub);return {sub,d,total:d.ok?round2(sub-d.amount):null}}
+function instInfo(total){
+  const down=draft.down===''?0:Number(draft.down),count=Number(draft.count),n=Number(draft.n),first=draft.first||defaultFirst();
+  if(!Number.isFinite(down)||down<0)return {ok:false,err:'instDownInvalid'};
+  if(down>=total-0.001)return {ok:false,err:'instDownTooMuch'};
+  if(!Number.isInteger(count)||count<1||count>120)return {ok:false,err:'instCountInvalid'};
+  if(!Number.isInteger(n)||n<1||n>365)return {ok:false,err:'instEveryInvalid'};
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(first))return {ok:false,err:'instDateInvalid'};
+  const financed=round2(total-down);
+  if(financed/count<0.01)return {ok:false,err:'instCountInvalid'};
+  return {ok:true,down:round2(down),financed,count,n,unit:draft.unit,first,dues:buildSchedule(financed,count,draft.unit,n,first)};
+}
+function toggleInst(on){
+  draft.inst=!!on;
+  const s=el('salePayment');
+  if(on){draft.payment='credit';if(s){s.value='credit';s.disabled=true}}
+  else{draft.payment='cash';if(s){s.value='cash';s.disabled=false}}
+  drawInstFields();drawInstPreview();
+}
+function drawInstFields(){
+  const b=el('instBox');if(!b)return;
+  if(!draft.inst){b.innerHTML='';return}
+  b.innerHTML=`<div class="grid2">
+    <label>${t('downPayment')}<input id="instDown" type="number" min="0" step="0.01" value="${esc(draft.down)}" oninput="draft.down=this.value;drawInstPreview()"></label>
+    <label>${t('instCount')}<input id="instCount" type="number" min="1" max="120" step="1" value="${esc(draft.count)}" oninput="draft.count=this.value;drawInstPreview()"></label>
+    <label>${t('instEvery')}<div class="row"><input type="number" min="1" step="1" value="${esc(draft.n)}" oninput="draft.n=this.value;drawInstPreview()"><select onchange="draft.unit=this.value;drawInstPreview()">${unitOptions(draft.unit)}</select></div></label>
+    <label>${t('firstDue')}<input id="instFirst" type="date" value="${esc(draft.first||defaultFirst())}" onchange="draft.first=this.value;drawInstPreview()"></label>
+  </div><div id="instPreview"></div>`;
+}
+function drawInstPreview(){
+  const box=el('instPreview');if(!box)return;
+  if(!draft.first&&el('instFirst'))el('instFirst').value=defaultFirst();
+  const {d,total}=draftTotal();
+  if(!cart.length||!d.ok){box.innerHTML='';return}
+  const r=instInfo(total);
+  if(!r.ok){box.innerHTML=`<div class="error">${t(r.err)}</div>`;return}
+  box.innerHTML=`<div class="totals"><div>${t('total')}: <b>${money(total)}</b></div><div>${t('downPayment')}: <b>${money(r.down)}</b></div><div class="grand">${t('inFinanced')}: <b>${money(r.financed)}</b></div></div>`
+   +tbl(`<tr><th>#</th><th>${t('inDueDate')}</th><th>${t('inAmount')}</th></tr>${r.dues.map(x=>`<tr><td>${x.seq}</td><td>${fmtDate(x.date)}</td><td>${money(x.amount)}</td></tr>`).join('')}`);
+}
+
+/* تحميل الأقساط: لو الجداول لسه ما اتعملتش، باقي السيستم بيشتغل عادي */
+async function refreshInst(){
+  try{
+    const [pl,du,pa]=await Promise.all([fetchAll('installment_plans',['id']),fetchAll('installment_dues',['plan_id','seq']),fetchAll('installment_payments',['id'])]);
+    db.plans=pl.map(r=>({id:r.id,invoice_id:r.invoice_id,customer:r.customer||'',down:num(r.down_payment),financed:num(r.financed),count:num(r.n_installments),unit:r.interval_unit,n:num(r.interval_n,1)}));
+    db.dues=du.map(r=>({id:r.id,plan_id:r.plan_id,seq:num(r.seq),date:String(r.due_date),amount:num(r.amount)}));
+    db.ipays=pa.map(r=>({id:r.id,plan_id:r.plan_id,amount:num(r.amount),ts:num(r.ts),note:r.note||''}));
+    db.instOk=true;
+  }catch(e){db.instOk=false;db.plans=[];db.dues=[];db.ipays=[]}
+}
+/* حالة كل خطة: المتبقي = صافي الفاتورة (بعد المرتجعات) − المقدم − الدفعات */
+function planView(pl){
+  const inv=db.invoices.find(i=>i.id===pl.invoice_id);
+  const dues=db.dues.filter(d=>d.plan_id===pl.id).sort((a,b)=>a.seq-b.seq);
+  const pays=db.ipays.filter(p=>p.plan_id===pl.id).sort((a,b)=>a.ts-b.ts||a.id-b.id);
+  const paid=round2(pays.reduce((s,p)=>s+p.amount,0));
+  const net=inv?netOf(inv):round2(pl.down+pl.financed);
+  const owed=Math.max(0,round2(net-pl.down-paid));
+  let pool=paid;
+  const rows=dues.map(d=>{const a=round2(Math.min(d.amount,pool));pool=round2(pool-a);return {...d,paid:a,left:round2(d.amount-a)}});
+  let cap=owed;
+  rows.forEach(r=>{const l=round2(Math.min(r.left,cap));r.left=l;cap=round2(cap-l)});
+  const today=todayStr();
+  const next=rows.find(r=>r.left>0.004)||null;
+  const overdueAmt=round2(rows.filter(r=>r.left>0.004&&r.date<today).reduce((s,r)=>s+r.left,0));
+  const status=owed<=0.004?'settled':(overdueAmt>0?'overdue':'active');
+  return {pl,inv,rows,pays,paid,net,owed,next,overdueAmt,status};
+}
+function statusBadge(s){const m={settled:['ok','inSettled'],overdue:['warn','inOverdue'],active:['mid','inActive']}[s];return `<span class="badge ${m[0]}">${t(m[1])}</span>`}
+function setInstFilter(k){instFilter=k;render()}
+function installments(){
+  if(!db.instOk){el('app').innerHTML=`<div class="panel"><h2>💳 ${t('installments')}</h2><p class="error">${t('instNotReady')}</p></div>`;return}
+  const vs=db.plans.map(planView);
+  const out=round2(vs.reduce((s,v)=>s+v.owed,0)),od=round2(vs.reduce((s,v)=>s+v.overdueAmt,0)),open=vs.filter(v=>v.status!=='settled').length;
+  el('app').innerHTML=`<div class="cards"><div class="card">${t('inOutstanding')}<b>${money(out)}</b></div><div class="card">${t('inOverdueTotal')}<b class="${od>0?'low':''}">${money(od)}</b></div><div class="card">${t('inActiveCount')}<b>${open}</b></div></div>
+  <div class="tabs">${[['active','inActive'],['overdue','inOverdue'],['settled','inSettled'],['all','all']].map(([k,l])=>`<button class="${instFilter===k?'on':''}" onclick="setInstFilter('${k}')">${t(l)}</button>`).join('')}</div>
+  <div class="toolbar"><input id="instSearch" placeholder="${t('search')}" value="${esc(instQuery)}"></div><div id="instTable"></div>`;
+  el('instSearch').addEventListener('input',e=>{instQuery=e.target.value;drawInstTable()});
+  drawInstTable();
+}
+function drawInstTable(){
+  const q=instQuery.trim().toLowerCase(),today=todayStr();
+  const vs=db.plans.map(planView)
+    .filter(v=>instFilter==='all'||(instFilter==='active'?v.status!=='settled':v.status===instFilter))
+    .filter(v=>!q||((v.pl.customer||'')+' '+(v.inv?v.inv.no:'')).toLowerCase().includes(q))
+    .sort((a,b)=>String(a.next?a.next.date:'9999').localeCompare(String(b.next?b.next.date:'9999')));
+  el('instTable').innerHTML=vs.length?tbl(`<tr><th>${t('number')}</th><th>${t('customer')}</th><th>${t('inNet')}</th><th>${t('inPaidInclDown')}</th><th>${t('inRemaining')}</th><th>${t('inNextDue')}</th><th>${t('inStatus')}</th><th></th></tr>`
+    +vs.map(v=>`<tr><td>${v.inv?v.inv.no:'-'}</td><td>${esc(v.pl.customer)}</td><td>${money(v.net)}</td><td>${money(round2(v.pl.down+v.paid))}</td><td><b>${money(v.owed)}</b></td><td${v.next&&v.next.date<today?' class="low"':''}>${v.next?fmtDate(v.next.date)+' — '+money(v.next.left):'-'}</td><td>${statusBadge(v.status)}</td><td class="nowrap"><button onclick="openPlan(${v.pl.id})">${t('view')}</button></td></tr>`).join('')):`<p class="muted">${t('inNoPlans')}</p>`;
+}
+function openPlan(id){
+  const pl=db.plans.find(p=>p.id===id);if(!pl)return;
+  const v=planView(pl),today=todayStr();
+  const rows=v.rows.map(r=>{
+    const done=r.left<=0.004,full=r.paid>=r.amount-0.004;
+    const st=done?(full?'inPaidRow':'inVoid'):(r.date<today?'inOverdue':(r.paid>0?'inPartial':'inUnpaid'));
+    const cls=done?(full?'ok':''):(r.date<today?'warn':'mid');
+    return `<tr><td>${r.seq}</td><td>${fmtDate(r.date)}</td><td>${money(r.amount)}</td><td>${money(r.paid)}</td><td>${money(r.left)}</td><td><span class="badge ${cls}">${t(st)}</span></td></tr>`;
+  }).join('');
+  const pays=v.pays.map(p=>`<div class="retitem"><div>${esc(new Date(p.ts).toLocaleString(locale()))} — <b>${money(p.amount)}</b>${p.note?' — '+esc(p.note):''}</div><button class="danger" onclick="deleteInstPayment(${p.id},${pl.id})">${t('inDelete')}</button></div>`).join('');
+  el('invBody').innerHTML=`<h2>${t('installmentPlan')}${v.inv?' — '+t('invoiceNo')+' '+v.inv.no:''}</h2>
+  <div class="inv-meta"><div>${t('customer')}: <b>${esc(pl.customer)}</b></div><div>${t('inNet')}: <b>${money(v.net)}</b></div><div>${t('downPayment')}: <b>${money(pl.down)}</b></div><div>${t('inFinanced')}: <b>${money(pl.financed)}</b></div><div>${t('inPaid')}: <b>${money(v.paid)}</b></div><div>${t('inRemaining')}: <b>${money(v.owed)}</b> ${statusBadge(v.status)}</div></div>
+  <h3>${t('inSchedule')}</h3>${tbl(`<tr><th>#</th><th>${t('inDueDate')}</th><th>${t('inAmount')}</th><th>${t('inPaid')}</th><th>${t('inRemaining')}</th><th>${t('inStatus')}</th></tr>${rows}`)}
+  ${v.owed>0.004?`<h3>${t('inRecordPay')}</h3><div class="grid2"><label>${t('inPayAmount')}<input id="ipAmt" type="number" min="0" step="0.01" value="${v.next?v.next.left:v.owed}"></label><label>${t('inPayNote')}<input id="ipNote"></label></div><div class="actions"><button class="primary" onclick="addInstPayment(${pl.id})">${t('inRecordPay')}</button><button onclick="el('ipAmt').value=${v.owed}">${t('inPayAll')}</button></div>`:''}
+  ${pays?`<h3>${t('inPaysLog')}</h3><div class="retitems">${pays}</div>`:''}
+  ${v.inv?`<div class="actions" style="margin-top:12px"><button onclick="openInvoice(${v.inv.id})">${t('inOpenInvoice')}</button></div>`:''}`;
+  el('invModal').classList.remove('hidden');
+}
+async function addInstPayment(id){
+  const pl=db.plans.find(p=>p.id===id);if(!pl)return;
+  const v=planView(pl),raw=el('ipAmt').value,amt=Number(raw),note=el('ipNote').value.trim();
+  if(raw===''||!Number.isFinite(amt)||amt<=0){alert(t('inPayInvalid'));return}
+  if(round2(amt)>v.owed+0.001){alert(t('inPayTooMuch')+': '+money(v.owed));return}
+  const ok=await run(async()=>{const r=await sb.from('installment_payments').insert({plan_id:id,amount:round2(amt),ts:Date.now(),note});if(r.error)throw r.error;await refresh();return true});
+  if(ok){render();openPlan(id);alert(t('inPaySaved'))}
+}
+async function deleteInstPayment(pid,planId){
+  if(!confirm(t('inConfirmDelPay')))return;
+  const ok=await run(async()=>{const r=await sb.from('installment_payments').delete().eq('id',pid);if(r.error)throw r.error;await refresh();return true});
+  if(ok){render();openPlan(planId)}
+}
+
 applyTheme();
 
 boot();
