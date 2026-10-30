@@ -149,6 +149,27 @@ body.dark .badge{background:#26344d;color:#e5e7eb}
 body.dark .badge.ok{background:#14532d;color:#bbf7d0}
 body.dark .badge.warn{background:#4a1d24;color:#ffb4b4}
 body.dark .badge.mid{background:#4a3410;color:#fde68a}
+
+/* تقرير المبيعات الشهرية */
+.viz{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--so:#898781;--ink:#172033;--ink2:#52514e;--grid:#e1e0d9;--axis:#c3c2b7;--surf:#fff;--up:#006300;--dn:#d03b3b}
+body.dark .viz{--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--so:#898781;--ink:#e5e7eb;--ink2:#c3c2b7;--grid:#26344d;--axis:#33425e;--surf:#111c2e;--up:#0ca30c;--dn:#ff7b7b}
+.viz h2{margin:6px 0 12px}
+.viz .card .sub{display:block;font-size:12px;margin-top:6px;color:var(--ink2);font-weight:normal}
+.viz .card b.sm{font-size:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.viz .delta.up{color:var(--up)}
+.viz .delta.dn{color:var(--dn)}
+.vlegend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:12px 0 6px;font-size:13px;color:var(--ink2)}
+.vlegend span{display:inline-flex;align-items:center;gap:6px}
+.vsw{width:10px;height:10px;border-radius:3px;display:inline-block;flex:0 0 auto}
+.vchart{position:relative}
+.vchart svg{width:100%;height:auto;display:block;direction:ltr;touch-action:pan-y}
+.vchart text{font-family:inherit;fill:var(--ink2);font-size:11px}
+.vtip{position:absolute;top:4px;z-index:5;transform:translateX(-50%);background:var(--surf);color:var(--ink);border:1px solid var(--grid);border-radius:10px;box-shadow:0 6px 24px #0003;padding:10px 12px;font-size:13px;min-width:200px;pointer-events:none}
+.vtip .tr{display:flex;justify-content:space-between;align-items:center;gap:14px;margin:4px 0}
+.vtip .tr span{display:inline-flex;align-items:center;gap:6px}
+.vnote{font-size:12px;color:var(--ink2);margin:8px 0}
+details.vtable summary{cursor:pointer;margin:12px 0;color:var(--ink2)}
+@media(max-width:760px){.vtip{min-width:170px;font-size:12px;padding:8px 10px}.viz .card b.sm{font-size:16px}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -674,6 +695,211 @@ function reports(){
   const units=db.invoices.reduce((s,i)=>s+i.items.reduce((a,x,idx)=>a+x.q-returnedQty(i,idx),0),0);
   const byPay={};PAYS.forEach(k=>byPay[k]=0);db.invoices.forEach(i=>{byPay[i.payment]=round2((byPay[i.payment]||0)+netOf(i))});
   el('app').innerHTML=`<div class="cards"><div class="card">${t('invoiceCount')}<b>${db.invoices.length}</b></div><div class="card">${t('salesTotal')}<b>${money(gross)}</b></div><div class="card">${t('returnsTotal')}<b>${money(rets)}</b></div><div class="card">${t('netSales')}<b>${money(round2(gross-rets))}</b></div><div class="card">${t('discountsTotal')}<b>${money(disc)}</b></div><div class="card">${t('unitsSold')}<b>${units}</b></div></div><div class="panel"><h2>${t('byPayment')}</h2>${tbl(`<tr><th>${t('payment')}</th><th>${t('netSales')}</th></tr>${PAYS.map(k=>`<tr><td>${payLabel(k)}</td><td>${money(byPay[k])}</td></tr>`).join('')}`)}</div>`;
+  try{el('app').insertAdjacentHTML('afterbegin',monthlyReport());wireChart()}catch(e){console.error(e)}
+}
+
+/* ---------- تقرير المبيعات الشهرية (بيتحسب من الفواتير مباشرة، صافي بعد المرتجعات) ---------- */
+Object.assign(T.ar,{repMonthly:'المبيعات الشهرية',rep6:'آخر 6 شهور',rep12:'آخر 12 شهر',repAll:'كل الفترة',repThisMonth:'مبيعات الشهر الحالي',repToDate:'لحد النهارده',repVsPrev:'التغير عن نفس الفترة من الشهر اللي فات',repPrevPeriod:'الشهر اللي فات لنفس الفترة',repBest:'أفضل منتج هذا الشهر',repUnitsN:'{n} وحدة',repLastYear:'نفس الشهر السنة اللي فاتت',repNoLastYear:'لسه مفيش بيانات',repFullMonth:'الشهر كامل',repMovAvg:'المتوسط المتحرك (3 شهور)',repOther:'غير محدد',repPartial:'لسه ما خلصش',repChartNote:'الخط المتصل متوسط آخر 3 شهور ومش بيشمل الشهر الحالي لأنه لسه ما خلصش، والعمود الباهت هو الشهر الحالي.',repNoYoyNote:'مقارنة السنة اللي فاتت هتظهر تلقائياً لما يبقى فيه بيانات لنفس الشهر قبلها بسنة.',repMonthsTable:'جدول الشهور',repMonth:'الشهر',repInvoices:'عدد الفواتير',repChange:'التغير عن الشهر السابق',repTopProducts:'أكتر المنتجات مبيعاً',repByFactory:'المبيعات حسب المصنع',repShare:'النسبة',repOverdue:'الأقساط المتأخرة',repOverdueNone:'لا توجد أقساط متأخرة',repOpenInst:'فتح الأقساط',repOverdueAmt:'المتأخر',repNet:'صافي المبيعات',repForPeriod:'في الفترة المعروضة'});
+Object.assign(T.en,{repMonthly:'Monthly Sales',rep6:'Last 6 months',rep12:'Last 12 months',repAll:'All time',repThisMonth:'This month sales',repToDate:'to date',repVsPrev:'Change vs same period last month',repPrevPeriod:'Last month, same period',repBest:'Best product this month',repUnitsN:'{n} units',repLastYear:'Same month last year',repNoLastYear:'No data yet',repFullMonth:'full month',repMovAvg:'3-month moving average',repOther:'Unassigned',repPartial:'month in progress',repChartNote:'The solid line is the average of the last 3 months and excludes the current month because it is not finished. The faded bar is the current month.',repNoYoyNote:'The comparison with last year appears automatically once there is data for the same month a year earlier.',repMonthsTable:'Months table',repMonth:'Month',repInvoices:'Invoices',repChange:'Change vs previous month',repTopProducts:'Top-selling products',repByFactory:'Sales by factory',repShare:'Share',repOverdue:'Overdue installments',repOverdueNone:'No overdue installments',repOpenInst:'Open installments',repOverdueAmt:'Overdue',repNet:'Net sales',repForPeriod:'in the shown period'});
+let repRange=12,repData=null;
+const OTHER='__other';
+let REP_W=760,REP_H=300,REP_L=58;const REP_R=12,REP_T=16,REP_B=34;
+/* مقاس الرسم بيتظبط على عرض الشاشة عشان الكتابة تفضل مقروءة في الموبايل */
+function sizeChart(){
+  const aw=(el('app').clientWidth||800)-(window.innerWidth<=760?28:40);
+  REP_W=Math.max(300,Math.min(760,aw));REP_H=REP_W<520?250:300;REP_L=REP_W<520?50:58;
+}
+let repLastW=window.innerWidth;
+window.addEventListener('resize',()=>{if(currentPage==='reports'&&Math.abs(window.innerWidth-repLastW)>40){repLastW=window.innerWidth;render()}});
+function setRepRange(n){repRange=n;render()}
+function monthKey(ts){const d=new Date(ts);return d.getFullYear()*12+d.getMonth()}
+function monthLabel(k,long){return new Date(Math.floor(k/12),k%12,1).toLocaleDateString(locale(),long?{month:'long',year:'numeric'}:{month:'short',year:'2-digit'})}
+function catName(c){if(c===OTHER)return t('repOther');const f=CATS.find(x=>x[1]===c);return f?t(f[0]):String(c)}
+function catColor(c){const i=CATS.findIndex(x=>x[1]===c);return i>=0&&i<4?`var(--s${i+1})`:'var(--so)'}
+function addTo(o,k,v){o[k]=round2((o[k]||0)+v)}
+function fmtPct(p){return (p>0.049?'+':p<-0.049?'−':'')+Math.abs(p).toLocaleString(locale(),{maximumFractionDigits:1})+'%'}
+function fmtAxis(v){
+  const n=x=>x.toLocaleString(locale(),{maximumFractionDigits:1}),a=Math.abs(v),ar=db.lang==='ar';
+  return a>=1e6?n(v/1e6)+(ar?' م':'M'):a>=1e4?n(v/1e3)+(ar?' ألف':'K'):n(v);
+}
+function niceTicks(lo,hi,n){
+  if(hi<=lo)hi=lo+1;
+  const raw=(hi-lo)/n,mag=Math.pow(10,Math.floor(Math.log10(raw))),f=raw/mag;
+  const step=(f<=1?1:f<=2?2:f<=2.5?2.5:f<=5?5:10)*mag;
+  const a=Math.floor(lo/step)*step,b=Math.ceil(hi/step)*step,ticks=[];
+  for(let v=a;v<=b+step/2;v+=step)ticks.push(+v.toFixed(6));
+  return {ticks,min:a,max:b};
+}
+function barPath(x,top,bot,w,r){
+  const h=bot-top;if(h<=0)return '';
+  r=Math.min(r,h,w/2);
+  return `M${x},${bot}V${top+r}Q${x},${top} ${x+r},${top}H${x+w-r}Q${x+w},${top} ${x+w},${top+r}V${bot}Z`;
+}
+
+/* بيجمّع كل الفواتير حسب الشهر: صافي المبيعات، التصنيفات، المنتجات، المصانع */
+function salesStats(){
+  const prodOf={};db.products.forEach(p=>{prodOf[p.id]=p});
+  const catKeys=CATS.map(c=>c[1]),months=new Map();
+  const now=new Date(),curK=monthKey(now.getTime()),today=now.getDate();
+  let prevToDate=0;
+  db.invoices.forEach(inv=>{
+    if(!inv.ts)return;
+    const k=monthKey(inv.ts);
+    let m=months.get(k);if(!m){m={k,net:0,count:0,cats:{},prods:{},facs:{}};months.set(k,m)}
+    const net=netOf(inv);
+    m.net=round2(m.net+net);m.count++;
+    if(k===curK-1&&new Date(inv.ts).getDate()<=today)prevToDate=round2(prevToDate+net);
+    const parts=inv.items.map((it,idx)=>{
+      const left=Math.max(0,it.q-returnedQty(inv,idx)),p=prodOf[it.id];
+      return {key:it.id||it.name,name:it.name,left,w:left*it.price,cat:p&&catKeys.includes(p.category)?p.category:OTHER,fac:p&&p.factory?p.factory:OTHER};
+    });
+    const W=parts.reduce((s,x)=>s+x.w,0);
+    if(W>0){
+      parts.forEach(x=>{
+        if(!x.w)return;
+        const share=net*x.w/W;
+        addTo(m.cats,x.cat,share);
+        const f=m.facs[x.fac]||(m.facs[x.fac]={units:0,value:0});f.units+=x.left;f.value=round2(f.value+share);
+        const pr=m.prods[x.key]||(m.prods[x.key]={name:x.name,units:0,value:0});pr.units+=x.left;pr.value=round2(pr.value+share);
+      });
+    }else if(net!==0)addTo(m.cats,OTHER,net);
+  });
+  return {months,curK,prevToDate};
+}
+
+function drawSalesChart(rows){
+  sizeChart();
+  const n=rows.length,order=[...CATS.map(c=>c[1]),OTHER];
+  const plotW=REP_W-REP_L-REP_R,plotH=REP_H-REP_T-REP_B,band=plotW/n;
+  let hi=0,lo=0;
+  rows.forEach(r=>{
+    let p=0,q=0;order.forEach(c=>{const v=r.cats[c]||0;if(v>0)p+=v;else q+=v});
+    hi=Math.max(hi,p,r.ma==null?0:r.ma,r.yoy==null?0:r.yoy);
+    lo=Math.min(lo,q,r.ma==null?0:r.ma,r.yoy==null?0:r.yoy);
+  });
+  if(hi===0&&lo===0)hi=100;
+  const sc=niceTicks(lo,hi,4);
+  const Y=v=>REP_T+plotH*(sc.max-v)/(sc.max-sc.min),X=i=>REP_L+band*(i+.5),bw=Math.min(24,band*.62);
+  let g=`<rect id="repHov" x="0" y="${REP_T}" width="0" height="${plotH}" style="fill:var(--ink);opacity:.06"/>`;
+  sc.ticks.forEach(v=>{const y=Y(v);g+=`<line x1="${REP_L}" x2="${REP_W-REP_R}" y1="${y}" y2="${y}" style="stroke:var(${v===0?'--axis':'--grid'})" stroke-width="1"/><text x="${REP_L-8}" y="${y+4}" text-anchor="end">${esc(fmtAxis(v))}</text>`});
+  rows.forEach((r,i)=>{
+    const x=X(i)-bw/2,op=r.partial?' opacity=".6"':'';
+    const vals=order.map(c=>[c,r.cats[c]||0]).filter(a=>Math.abs(a[1])>=0.005);
+    const pos=vals.filter(a=>a[1]>0),neg=vals.filter(a=>a[1]<0);
+    let cur=0;
+    pos.forEach(([c,v],j)=>{
+      const top=Y(cur+v),bot=Y(cur);cur+=v;
+      g+=`<path d="${barPath(x,top+(j<pos.length-1?1:0),bot-(j>0?1:0),bw,j===pos.length-1?4:0)}" style="fill:${catColor(c)}"${op}/>`;
+    });
+    cur=0;
+    neg.forEach(([c,v],j)=>{
+      const top=Y(cur),bot=Y(cur+v);cur+=v;
+      g+=`<path d="${barPath(x,top+(j>0?1:0),bot-(j<neg.length-1?1:0),bw,0)}" style="fill:${catColor(c)}"${op}/>`;
+    });
+  });
+  const seg=key=>{let d='',pen=false;rows.forEach((r,i)=>{const v=r[key];if(v==null){pen=false;return}d+=(pen?'L':'M')+X(i).toFixed(1)+','+Y(v).toFixed(1);pen=true});return d};
+  const yd=seg('yoy'),md=seg('ma');
+  if(yd)g+=`<path d="${yd}" fill="none" style="stroke:var(--ink2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 4"/>`;
+  if(md){
+    g+=`<path d="${md}" fill="none" style="stroke:var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+    rows.forEach((r,i)=>{if(r.ma!=null)g+=`<circle cx="${X(i).toFixed(1)}" cy="${Y(r.ma).toFixed(1)}" r="4" style="fill:var(--ink);stroke:var(--surf)" stroke-width="2"/>`});
+  }
+  const step=Math.max(1,Math.ceil(54/band));
+  rows.forEach((r,i)=>{if((n-1-i)%step===0)g+=`<text x="${X(i).toFixed(1)}" y="${REP_H-12}" text-anchor="middle">${esc(monthLabel(r.k))}</text>`});
+  rows.forEach((r,i)=>{g+=`<rect data-i="${i}" x="${(REP_L+band*i).toFixed(1)}" y="${REP_T}" width="${band.toFixed(1)}" height="${plotH}" fill="transparent"/>`});
+  repData={rows,band,order};
+  return `<svg viewBox="0 0 ${REP_W} ${REP_H}" role="img" aria-label="${esc(t('repMonthly'))}">${g}</svg>`;
+}
+
+/* تفاصيل الشهر لما المستخدم يقف على عمود (أو يلمسه في الموبايل) */
+function wireChart(){
+  const box=el('repChart');if(!box||!repData)return;
+  const tip=el('repTip'),hov=el('repHov'),D=repData;
+  const hide=()=>{tip.classList.add('hidden');hov.setAttribute('width','0')};
+  const show=i=>{
+    const r=D.rows[i];if(!r)return;
+    let h=`<b>${esc(monthLabel(r.k,true))}${r.partial?' — '+esc(t('repPartial')):''}</b><div class="tr"><span>${t('repNet')}</span><b>${money(r.net)}</b></div>`;
+    D.order.forEach(c=>{const v=r.cats[c]||0;if(Math.abs(v)>=0.005)h+=`<div class="tr"><span><i class="vsw" style="background:${catColor(c)}"></i>${esc(catName(c))}</span><span>${money(v)}</span></div>`});
+    if(r.ma!=null)h+=`<div class="tr"><span>${t('repMovAvg')}</span><span>${money(r.ma)}</span></div>`;
+    if(r.yoy!=null)h+=`<div class="tr"><span>${t('repLastYear')}</span><span>${money(r.yoy)}</span></div>`;
+    h+=`<div class="tr"><span>${t('repInvoices')}</span><span>${r.count}</span></div>`;
+    tip.innerHTML=h;tip.classList.remove('hidden');
+    hov.setAttribute('x',REP_L+D.band*i);hov.setAttribute('width',D.band);
+    const cw=box.clientWidth,px=(REP_L+D.band*(i+.5))*cw/REP_W,tw=tip.offsetWidth;
+    tip.style.left=Math.min(Math.max(px,tw/2),Math.max(tw/2,cw-tw/2))+'px';
+  };
+  const at=e=>{const h=e.target.closest&&e.target.closest('[data-i]');h?show(+h.getAttribute('data-i')):hide()};
+  box.addEventListener('pointermove',at);box.addEventListener('pointerdown',at);box.addEventListener('pointerleave',hide);
+}
+
+function overduePanel(){
+  if(!db.instOk)return '';
+  const vs=db.plans.map(planView).filter(v=>v.status==='overdue').sort((a,b)=>b.overdueAmt-a.overdueAmt);
+  const head=`<h2>${t('repOverdue')}</h2>`;
+  if(!vs.length)return `<div class="panel">${head}<p class="muted">${t('repOverdueNone')}</p></div>`;
+  const tot=round2(vs.reduce((s,v)=>s+v.overdueAmt,0));
+  return `<div class="panel">${head}<p>${t('inOverdueTotal')}: <b class="low">${money(tot)}</b> — ${vs.length}</p>${tbl(`<tr><th>${t('customer')}</th><th>${t('number')}</th><th>${t('repOverdueAmt')}</th><th>${t('inRemaining')}</th><th>${t('inNextDue')}</th></tr>`+vs.slice(0,10).map(v=>`<tr><td>${esc(v.pl.customer||t('walkIn'))}</td><td>${v.inv?v.inv.no:'-'}</td><td class="low">${money(v.overdueAmt)}</td><td>${money(v.owed)}</td><td>${v.next?fmtDate(v.next.date):'-'}</td></tr>`).join(''))}<div class="toolbar" style="margin-top:12px"><button onclick="showPage('installments')">${t('repOpenInst')}</button></div></div>`;
+}
+
+function monthlyReport(){
+  const S=salesStats(),months=S.months,curK=S.curK;
+  if(!months.size)return `<div class="viz"><h2>${t('repMonthly')}</h2><div class="panel"><p class="muted">${t('noInvoices')}</p></div></div>`;
+  const keys=[...months.keys()],minK=Math.min(...keys),endK=Math.max(curK,...keys);
+  const startK=repRange?Math.max(endK-repRange+1,minK):minK;
+  const netAt=k=>months.has(k)?months.get(k).net:0;
+  const rows=[];
+  for(let k=startK;k<=endK;k++){
+    const m=months.get(k),partial=k===curK;
+    let ma=null;
+    if(!partial){const from=Math.max(minK,k-2);let s=0;for(let j=from;j<=k;j++)s+=netAt(j);ma=round2(s/(k-from+1))}
+    rows.push({k,net:m?m.net:0,count:m?m.count:0,cats:m?m.cats:{},ma,yoy:months.has(k-12)?netAt(k-12):null,partial});
+  }
+  /* الكروت */
+  const cur=months.get(curK),curNet=cur?cur.net:0;
+  const pct=S.prevToDate>0?(curNet-S.prevToDate)/S.prevToDate*100:null;
+  const best=cur?Object.values(cur.prods).sort((a,b)=>b.units-a.units||b.value-a.value)[0]:null;
+  const hasLY=months.has(curK-12);
+  const cls=pct==null?'':(pct>0.049?'up':pct<-0.049?'dn':'');
+  const arrow=pct==null?'':(pct>0.049?'▲ ':pct<-0.049?'▼ ':'');
+  const cards=`<div class="cards">
+   <div class="card">${t('repThisMonth')}<b>${money(curNet)}</b><span class="sub">${esc(monthLabel(curK,true))} — ${t('repToDate')}</span></div>
+   <div class="card">${t('repVsPrev')}<b class="delta ${cls}">${pct==null?'—':arrow+esc(fmtPct(pct))}</b><span class="sub">${t('repPrevPeriod')}: ${money(S.prevToDate)}</span></div>
+   <div class="card">${t('repBest')}<b class="sm" title="${esc(best?best.name:'')}">${best?esc(best.name):'—'}</b><span class="sub">${best?t('repUnitsN').replace('{n}',best.units):''}</span></div>
+   <div class="card">${t('repLastYear')}<b>${hasLY?money(netAt(curK-12)):'—'}</b><span class="sub">${hasLY?t('repFullMonth'):t('repNoLastYear')}</span></div>
+  </div>`;
+  /* الرسم */
+  const used=[...CATS.map(c=>c[1]),OTHER].filter(c=>rows.some(r=>Math.abs(r.cats[c]||0)>=0.005));
+  const hasMA=rows.some(r=>r.ma!=null),hasYoy=rows.some(r=>r.yoy!=null);
+  const legend=used.map(c=>`<span><i class="vsw" style="background:${catColor(c)}"></i>${esc(catName(c))}</span>`).join('')
+    +(hasMA?`<span><svg width="22" height="10" aria-hidden="true"><line x1="1" x2="21" y1="5" y2="5" style="stroke:var(--ink)" stroke-width="2" stroke-linecap="round"/></svg>${t('repMovAvg')}</span>`:'')
+    +(hasYoy?`<span><svg width="22" height="10" aria-hidden="true"><line x1="1" x2="21" y1="5" y2="5" style="stroke:var(--ink2)" stroke-width="2" stroke-linecap="round" stroke-dasharray="5 3"/></svg>${t('repLastYear')}</span>`:'');
+  const svg=drawSalesChart(rows);
+  const tabs=[[6,'rep6'],[12,'rep12'],[0,'repAll']].map(([n,l])=>`<button class="${repRange===n?'on':''}" onclick="setRepRange(${n})">${t(l)}</button>`).join('');
+  /* جدول الشهور */
+  const trs=rows.slice().reverse().map(r=>{
+    const pm=months.get(r.k-1),p=pm&&pm.net>0?(r.net-pm.net)/pm.net*100:null;
+    const c=p==null?'':(p>0.049?'up':p<-0.049?'dn':'');
+    return `<tr><td>${esc(monthLabel(r.k,true))}${r.partial?` <span class="badge mid">${t('repPartial')}</span>`:''}</td><td>${r.count}</td><td>${money(r.net)}</td><td class="delta ${c}">${p==null?'—':(p>0.049?'▲ ':p<-0.049?'▼ ':'')+esc(fmtPct(p))}</td></tr>`;
+  }).join('');
+  const table=tbl(`<tr><th>${t('repMonth')}</th><th>${t('repInvoices')}</th><th>${t('repNet')}</th><th>${t('repChange')}</th></tr>${trs}`);
+  /* أكتر المنتجات والمصانع في الفترة المعروضة */
+  const prods={},facs={};
+  rows.forEach(r=>{const m=months.get(r.k);if(!m)return;
+    Object.entries(m.prods).forEach(([k,v])=>{const o=prods[k]||(prods[k]={name:v.name,units:0,value:0});o.name=v.name;o.units+=v.units;o.value=round2(o.value+v.value)});
+    Object.entries(m.facs).forEach(([k,v])=>{const o=facs[k]||(facs[k]={units:0,value:0});o.units+=v.units;o.value=round2(o.value+v.value)});
+  });
+  const topP=Object.values(prods).filter(x=>x.units>0).sort((a,b)=>b.units-a.units||b.value-a.value).slice(0,10);
+  const facRows=Object.entries(facs).sort((a,b)=>b[1].value-a[1].value);
+  const facTotal=facRows.reduce((s,x)=>s+x[1].value,0);
+  const topHtml=`<div class="panel"><h2>${t('repTopProducts')} <span class="muted" style="font-size:13px;font-weight:normal">${t('repForPeriod')}</span></h2>${topP.length?tbl(`<tr><th>#</th><th>${t('name')}</th><th>${t('units')}</th><th>${t('repNet')}</th></tr>${topP.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.name)}</td><td>${x.units}</td><td>${money(x.value)}</td></tr>`).join('')}`):`<p class="muted">${t('noInvoices')}</p>`}</div>`;
+  const facHtml=`<div class="panel"><h2>${t('repByFactory')} <span class="muted" style="font-size:13px;font-weight:normal">${t('repForPeriod')}</span></h2>${facRows.length?tbl(`<tr><th>${t('factory')}</th><th>${t('units')}</th><th>${t('repNet')}</th><th>${t('repShare')}</th></tr>${facRows.map(([f,x])=>`<tr><td>${f===OTHER?t('repOther'):esc(f)}</td><td>${x.units}</td><td>${money(x.value)}</td><td>${facTotal>0?esc(fmtPct(x.value/facTotal*100).replace('+','')):'—'}</td></tr>`).join('')}`):`<p class="muted">${t('noInvoices')}</p>`}</div>`;
+  return `<div class="viz"><h2 style="margin-top:26px">${t('repMonthly')}</h2>${cards}
+   <div class="panel"><div class="tabs" style="margin-bottom:0">${tabs}</div>
+    <div class="vlegend">${legend}</div>
+    <div class="vchart" id="repChart">${svg}<div id="repTip" class="vtip hidden"></div></div>
+    <p class="vnote">${t('repChartNote')}${hasYoy?'':' '+t('repNoYoyNote')}</p>
+    <details class="vtable"><summary>${t('repMonthsTable')}</summary>${table}</details></div>
+   ${topHtml}${facHtml}${overduePanel()}</div>`;
 }
 
 /* ---------- النسخ الاحتياطي والاستعادة ---------- */
