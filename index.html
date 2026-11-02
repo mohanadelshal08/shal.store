@@ -205,14 +205,12 @@ details.vtable summary{cursor:pointer;margin:12px 0;color:var(--ink2)}
 <button class="close" type="button" onclick="closeProductModal()">×</button>
 <h2 id="modalTitle">إضافة / تعديل منتج</h2>
 <div id="formError" class="error"></div>
-<label id="lblCode">الكود<input id="f_code"></label>
-<label id="lblName">اسم المنتج<input id="f_name"></label>
-<label id="lblCategory">التصنيف<input id="f_category" list="categoryList" autocomplete="off"></label>
-<datalist id="categoryList"></datalist>
-<label id="lblFactory">المصنع<input id="f_factory" list="factoryList" autocomplete="off"></label>
-<datalist id="factoryList"></datalist>
-<label id="lblSize">المقاس<input id="f_size"></label>
-<label id="lblPrice">السعر<input id="f_price" type="number" min="0" step="0.01"></label>
+<label id="lblCode">الكود<input id="f_code" autocomplete="off"></label>
+<label id="lblName">اسم المنتج<input id="f_name" autocomplete="off"></label>
+<label id="lblCategory">التصنيف<input id="f_category" autocomplete="off"></label>
+<label id="lblFactory">المصنع<input id="f_factory" autocomplete="off"></label>
+<label id="lblSize">المقاس<input id="f_size" autocomplete="off"></label>
+<label id="lblPrice">السعر<input id="f_price" type="number" min="0" step="1"></label>
 <label id="lblQty">الكمية<input id="f_qty" type="number" min="0" step="1"></label>
 <button id="saveProductBtn" class="primary savebtn" type="button" onclick="saveProduct()">حفظ المنتج</button>
 </div>
@@ -286,6 +284,28 @@ function payLabel(k){return t(PAY_KEYS[k]||'payCash')}
 function categoryLabel(v){const f=CATS.find(c=>c[1]===v);return f?t(f[0]):esc(v)}
 /* التصنيفات بتتكتب بإيد المستخدم: بنجمعها من المنتجات الموجودة (القديمة الأول بترتيبها المعتاد) */
 function allCats(){const seen=new Set(),out=[];const add=c=>{c=String(c==null?'':c).trim();if(c&&!seen.has(c)){seen.add(c);out.push(c)}};const used=new Set(db.products.map(p=>String(p.category==null?'':p.category).trim()));CATS.forEach(c=>{if(used.has(c[1]))add(c[1])});db.products.forEach(p=>add(p.category));return out}
+
+/* اقتراحات التصنيف والمصنع: بتظهر بس وانت بتكتب وبتفلتر على الحروف، مش كلها عند الضغط */
+const sugBox=document.createElement('div');
+sugBox.style.cssText='position:fixed;z-index:9999;display:none;background:#fff;color:#172033;border:1px solid #cfd6e4;border-radius:8px;box-shadow:0 6px 18px #0003;max-height:200px;overflow:auto;font-size:14px';
+document.body.appendChild(sugBox);
+let sugInput=null;
+const SUG={f_category:()=>allCats(),f_factory:()=>db.factories};
+function hideSug(){sugBox.style.display='none';sugInput=null}
+function showSug(inp){
+  const q=inp.value.trim().toLowerCase();
+  if(!q){hideSug();return}
+  const list=SUG[inp.id]().filter(x=>{const v=String(x).toLowerCase();return v.includes(q)&&v!==q}).slice(0,8);
+  if(!list.length){hideSug();return}
+  const r=inp.getBoundingClientRect();
+  sugInput=inp;
+  sugBox.style.left=r.left+'px';sugBox.style.top=(r.bottom+2)+'px';sugBox.style.width=r.width+'px';sugBox.style.display='block';
+  sugBox.innerHTML=list.map(x=>`<div class="sugItem" data-v="${esc(x)}" style="padding:8px 10px;cursor:pointer;border-bottom:1px solid #eef1f6">${esc(x)}</div>`).join('');
+}
+document.addEventListener('input',e=>{if(SUG[e.target.id])showSug(e.target)});
+document.addEventListener('focusout',e=>{if(SUG[e.target.id])hideSug()});
+document.addEventListener('scroll',hideSug,true);
+sugBox.addEventListener('pointerdown',e=>{const d=e.target.closest('.sugItem');if(!d||!sugInput)return;e.preventDefault();sugInput.value=d.dataset.v;hideSug()});
 function payOptions(sel){return PAYS.map(k=>`<option value="${k}" ${sel===k?'selected':''}>${t(PAY_KEYS[k])}</option>`).join('')}
 function fmtInv(inv){return inv.ts?new Date(inv.ts).toLocaleString(locale()):String(inv.date||'')}
 
@@ -490,8 +510,7 @@ function drawProducts(q){
 }
 function openProductModal(p=null){
   editingId=p?p.id:null;
-  el('f_code').value=p?p.code:'';el('f_name').value=p?p.name:'';el('f_category').value=p?p.category:'';el('categoryList').innerHTML=allCats().map(c=>`<option value="${esc(c)}"></option>`).join('');el('f_factory').value=p?p.factory:'';el('f_size').value=p?p.size:'';el('f_price').value=p?p.price:'';el('f_qty').value=p?p.qty:'';
-  el('factoryList').innerHTML=db.factories.map(f=>`<option value="${esc(f)}"></option>`).join('');
+  el('f_code').value=p?p.code:'';el('f_name').value=p?p.name:'';el('f_category').value=p?p.category:'';el('f_factory').value=p?p.factory:'';el('f_size').value=p?p.size:'';el('f_price').value=p?p.price:'';el('f_qty').value=p?p.qty:'';
   el('formError').textContent='';el('modal').classList.remove('hidden');setTimeout(()=>el('f_code').focus(),50);
 }
 function closeProductModal(){el('modal').classList.add('hidden');editingId=null}
