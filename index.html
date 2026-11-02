@@ -207,7 +207,8 @@ details.vtable summary{cursor:pointer;margin:12px 0;color:var(--ink2)}
 <div id="formError" class="error"></div>
 <label id="lblCode">الكود<input id="f_code"></label>
 <label id="lblName">اسم المنتج<input id="f_name"></label>
-<label id="lblCategory">التصنيف<select id="f_category"><option>عبايات خروج</option><option>عبايات بيتي</option><option>داخلي</option><option>ترنجات رجالي</option></select></label>
+<label id="lblCategory">التصنيف<input id="f_category" list="categoryList" autocomplete="off"></label>
+<datalist id="categoryList"></datalist>
 <label id="lblFactory">المصنع<input id="f_factory" list="factoryList" autocomplete="off"></label>
 <datalist id="factoryList"></datalist>
 <label id="lblSize">المقاس<input id="f_size"></label>
@@ -283,7 +284,8 @@ function money(n){return Number(n||0).toLocaleString(locale(),{minimumFractionDi
 function tbl(inner){return `<div class="tablewrap"><table class="table">${inner}</table></div>`}
 function payLabel(k){return t(PAY_KEYS[k]||'payCash')}
 function categoryLabel(v){const f=CATS.find(c=>c[1]===v);return f?t(f[0]):esc(v)}
-function categoryOptions(selected=''){return CATS.map(([k,v])=>`<option value="${v}" ${selected===v?'selected':''}>${t(k)}</option>`).join('')}
+/* التصنيفات بتتكتب بإيد المستخدم: بنجمعها من المنتجات الموجودة (القديمة الأول بترتيبها المعتاد) */
+function allCats(){const seen=new Set(),out=[];const add=c=>{c=String(c==null?'':c).trim();if(c&&!seen.has(c)){seen.add(c);out.push(c)}};const used=new Set(db.products.map(p=>String(p.category==null?'':p.category).trim()));CATS.forEach(c=>{if(used.has(c[1]))add(c[1])});db.products.forEach(p=>add(p.category));return out}
 function payOptions(sel){return PAYS.map(k=>`<option value="${k}" ${sel===k?'selected':''}>${t(PAY_KEYS[k])}</option>`).join('')}
 function fmtInv(inv){return inv.ts?new Date(inv.ts).toLocaleString(locale()):String(inv.date||'')}
 
@@ -295,7 +297,7 @@ function normalizeDB(x){
     let id=safeId(p.id,'p_'+Date.now()+'_'+i);
     while(seen.has(id))id+='_'+i;
     seen.add(id);
-    return {id,code:String(p.code==null?'':p.code),name:String(p.name==null?'':p.name),category:String(p.category||CATS[0][1]),factory:String(p.factory==null?'':p.factory).trim(),size:String(p.size==null?'':p.size),price:Math.max(0,num(p.price)),qty:Math.max(0,Math.floor(num(p.qty)))};
+    return {id,code:String(p.code==null?'':p.code),name:String(p.name==null?'':p.name),category:String(p.category==null?'':p.category).trim(),factory:String(p.factory==null?'':p.factory).trim(),size:String(p.size==null?'':p.size),price:Math.max(0,num(p.price)),qty:Math.max(0,Math.floor(num(p.qty)))};
   });
 
   const rawInv=(Array.isArray(o.invoices)?o.invoices:[]).filter(i=>i&&typeof i==='object');
@@ -488,14 +490,14 @@ function drawProducts(q){
 }
 function openProductModal(p=null){
   editingId=p?p.id:null;
-  el('f_code').value=p?p.code:'';el('f_name').value=p?p.name:'';el('f_category').innerHTML=categoryOptions(p?p.category:CATS[0][1]);el('f_factory').value=p?p.factory:'';el('f_size').value=p?p.size:'';el('f_price').value=p?p.price:'';el('f_qty').value=p?p.qty:'';
+  el('f_code').value=p?p.code:'';el('f_name').value=p?p.name:'';el('f_category').value=p?p.category:'';el('categoryList').innerHTML=allCats().map(c=>`<option value="${esc(c)}"></option>`).join('');el('f_factory').value=p?p.factory:'';el('f_size').value=p?p.size:'';el('f_price').value=p?p.price:'';el('f_qty').value=p?p.qty:'';
   el('factoryList').innerHTML=db.factories.map(f=>`<option value="${esc(f)}"></option>`).join('');
   el('formError').textContent='';el('modal').classList.remove('hidden');setTimeout(()=>el('f_code').focus(),50);
 }
 function closeProductModal(){el('modal').classList.add('hidden');editingId=null}
 async function saveProduct(){
-  const code=el('f_code').value.trim(),name=el('f_name').value.trim(),category=el('f_category').value,factory=el('f_factory').value.trim(),size=el('f_size').value.trim(),price=Number(el('f_price').value),qty=Number(el('f_qty').value);
-  if(!code||!name||!factory||!size||el('f_price').value===''||el('f_qty').value===''){el('formError').textContent=t('fillAll');return}
+  const code=el('f_code').value.trim(),name=el('f_name').value.trim(),category=el('f_category').value.trim(),factory=el('f_factory').value.trim(),size=el('f_size').value.trim(),price=Number(el('f_price').value),qty=Number(el('f_qty').value);
+  if(!code||!name||!category||!factory||!size||el('f_price').value===''||el('f_qty').value===''){el('formError').textContent=t('fillAll');return}
   if(!Number.isFinite(price)||price<0||!Number.isInteger(qty)||qty<0){el('formError').textContent=t('numbers');return}
   const id=editingId||('p_'+Date.now()+'_'+Math.random().toString(36).slice(2,8));
   const product={id,code,name,category,factory,size,price,qty};
@@ -715,7 +717,7 @@ function setRepRange(n){repRange=n;render()}
 function monthKey(ts){const d=new Date(ts);return d.getFullYear()*12+d.getMonth()}
 function monthLabel(k,long){return new Date(Math.floor(k/12),k%12,1).toLocaleDateString(locale(),long?{month:'long',year:'numeric'}:{month:'short',year:'2-digit'})}
 function catName(c){if(c===OTHER)return t('repOther');const f=CATS.find(x=>x[1]===c);return f?t(f[0]):String(c)}
-function catColor(c){const i=CATS.findIndex(x=>x[1]===c);return i>=0&&i<4?`var(--s${i+1})`:'var(--so)'}
+function catColor(c){const i=allCats().indexOf(c);return i>=0&&i<4?`var(--s${i+1})`:'var(--so)'}
 function addTo(o,k,v){o[k]=round2((o[k]||0)+v)}
 function fmtPct(p){return (p>0.049?'+':p<-0.049?'−':'')+Math.abs(p).toLocaleString(locale(),{maximumFractionDigits:1})+'%'}
 function fmtAxis(v){
@@ -739,7 +741,7 @@ function barPath(x,top,bot,w,r){
 /* بيجمّع كل الفواتير حسب الشهر: صافي المبيعات، التصنيفات، المنتجات، المصانع */
 function salesStats(){
   const prodOf={};db.products.forEach(p=>{prodOf[p.id]=p});
-  const catKeys=CATS.map(c=>c[1]),months=new Map();
+  const catKeys=allCats(),months=new Map();
   const now=new Date(),curK=monthKey(now.getTime()),today=now.getDate();
   let prevToDate=0;
   db.invoices.forEach(inv=>{
@@ -769,7 +771,7 @@ function salesStats(){
 
 function drawSalesChart(rows){
   sizeChart();
-  const n=rows.length,order=[...CATS.map(c=>c[1]),OTHER];
+  const n=rows.length,order=[...allCats(),OTHER];
   const plotW=REP_W-REP_L-REP_R,plotH=REP_H-REP_T-REP_B,band=plotW/n;
   let hi=0,lo=0;
   rows.forEach(r=>{
@@ -868,7 +870,7 @@ function monthlyReport(){
    <div class="card">${t('repLastYear')}<b>${hasLY?money(netAt(curK-12)):'—'}</b><span class="sub">${hasLY?t('repFullMonth'):t('repNoLastYear')}</span></div>
   </div>`;
   /* الرسم */
-  const used=[...CATS.map(c=>c[1]),OTHER].filter(c=>rows.some(r=>Math.abs(r.cats[c]||0)>=0.005));
+  const used=[...allCats(),OTHER].filter(c=>rows.some(r=>Math.abs(r.cats[c]||0)>=0.005));
   const hasMA=rows.some(r=>r.ma!=null),hasYoy=rows.some(r=>r.yoy!=null);
   const legend=used.map(c=>`<span><i class="vsw" style="background:${catColor(c)}"></i>${esc(catName(c))}</span>`).join('')
     +(hasMA?`<span><svg width="22" height="10" aria-hidden="true"><line x1="1" x2="21" y1="5" y2="5" style="stroke:var(--ink)" stroke-width="2" stroke-linecap="round"/></svg>${t('repMovAvg')}</span>`:'')
