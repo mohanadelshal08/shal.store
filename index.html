@@ -140,6 +140,16 @@ body.dark .totals .grand{border-color:#33425e}
 @media print{body.dark{background:#fff;color:#000}}
 .login form{color:#172033}
 
+/* البروفايل */
+.av{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:#1477ff;color:#fff;font-weight:bold;overflow:hidden;flex:0 0 auto;width:30px;height:30px;font-size:14px;line-height:1}
+.av img{width:100%;height:100%;object-fit:cover;display:block}
+.av.sm{width:28px;height:28px;font-size:13px}
+.av.lg{width:96px;height:96px;font-size:38px}
+.profchip{display:inline-flex;align-items:center;gap:8px;padding:5px 12px 5px 6px;max-width:210px}
+.profchip span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.profbox{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.grid2 input[readonly]{opacity:.65}
+
 /* الأقساط */
 .badge{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;background:#e8ebf0;color:#172033;white-space:nowrap}
 .badge.ok{background:#dcfce7;color:#166534}
@@ -192,6 +202,7 @@ details.vtable summary{cursor:pointer;margin:12px 0;color:var(--ink2)}
 <header>
 <h1 id="storeTitle"> ElShal Store  </h1>
 <div class="hbtns">
+<button id="profileBtn" class="profchip hidden" onclick="showPage('profile')"><span class="av" id="profAv"></span><span id="profNameChip"></span></button>
 <button id="refreshBtn" onclick="reloadData()" title="تحديث البيانات">🔄</button>
 <button id="backupBtn" onclick="backupData()">نسخة احتياطية</button>
 <label class="restore" id="restoreLabel">استعادة<input id="restoreFile" type="file" accept="application/json,.json"></label>
@@ -265,7 +276,7 @@ const T={
   restoreConfirm:'This adds the file data to the database: existing invoices are not duplicated, and products with the same ID are updated from the file. Continue?',loginTitle:'Sign in',email:'Email',password:'Password',login:'Sign in',logout:'Sign out',loginFailed:'Wrong email or password',loading:'Loading...',connError:'Could not reach the database',notConfigured:'Set SUPABASE_URL and SUPABASE_KEY at the top of the page script',errAuth:'Session expired, please sign in again',errNotFound:'Item not found (maybe deleted on another device). Tap refresh',dupError:'Duplicate data (invoice number or name already exists)',legacyFound:'Found old data saved on this device. Upload it to the database now?',refreshTip:'Refresh data',codeExists:'' }
 };
 
-let db={products:[],invoices:[],factories:[],plans:[],dues:[],ipays:[],instOk:false,lang:loadLang()}, currentPage='dashboard', salesTab='new', cart=[], editingId=null, invQuery='';
+let db={products:[],invoices:[],factories:[],plans:[],dues:[],ipays:[],instOk:false,profile:null,profiles:[],profOk:false,lang:loadLang()}, currentPage='dashboard', salesTab='new', cart=[], editingId=null, invQuery='';
 let draft=newDraft();
 
 /* ---------- أدوات عامة ---------- */
@@ -339,7 +350,7 @@ function normalizeDB(x){
     const total=has(i.total)?num(i.total):round2(subtotal-discount);
     const returns=(Array.isArray(i.returns)?i.returns:[]).filter(r=>r&&typeof r==='object').map(r=>({ts:num(r.ts),amount:Math.max(0,num(r.amount)),items:(Array.isArray(r.items)?r.items:[]).filter(z=>z&&typeof z==='object').map(z=>({i:Math.floor(num(z.i,-1)),id:safeId(z.id,''),q:Math.max(0,Math.floor(num(z.q)))})).filter(z=>z.q>0&&z.i>=0&&z.i<items.length)}));
     const ts=has(i.ts)?num(i.ts):(id>1e12?id:(Date.parse(i.date)||0));
-    return {id,no,ts,date:String(i.date==null?'':i.date),customer:String(i.customer==null?'':i.customer),payment:PAYS.includes(i.payment)?i.payment:'cash',items,subtotal,discType:i.discType==='percent'?'percent':'amount',discValue:Math.max(0,num(i.discValue)),discount,total,returns};
+    return {id,no,ts,date:String(i.date==null?'':i.date),customer:String(i.customer==null?'':i.customer),payment:PAYS.includes(i.payment)?i.payment:'cash',items,subtotal,discType:i.discType==='percent'?'percent':'amount',discValue:Math.max(0,num(i.discValue)),discount,total,returns,cashier:String(i.cashier==null?'':i.cashier)};
   });
 
   const factories=[];
@@ -366,6 +377,7 @@ function errMsg(e){
   if(m.includes('NOQTY'))return t('noReturnQty');
   if(m.includes('EXISTS'))return t('factoryExists');
   if(m.includes('NOTFOUND'))return t('errNotFound');
+  if(m.includes('LASTOWNER'))return t('profLastOwner');
   if(m.includes('AUTH')||m.includes('JWT'))return t('errAuth');
   if(m.includes('duplicate key'))return t('dupError');
   return t('connError')+': '+m;
@@ -380,8 +392,8 @@ async function run(fn){
 }
 
 /* تحويل صفوف الداتا بيز <-> شكل البيانات في التطبيق */
-function rowToInv(r){return {id:r.id,no:r.inv_no,ts:r.ts,date:r.date_text,customer:r.customer,payment:r.payment,items:r.items,subtotal:r.subtotal,discType:r.disc_type,discValue:r.disc_value,discount:r.discount,total:r.total,returns:r.refunds}}
-function invToRow(i){return {id:i.id,inv_no:i.no,ts:i.ts,date_text:i.date,customer:i.customer,payment:i.payment,items:i.items,subtotal:i.subtotal,disc_type:i.discType,disc_value:i.discValue,discount:i.discount,total:i.total,refunds:i.returns}}
+function rowToInv(r){return {id:r.id,no:r.inv_no,ts:r.ts,date:r.date_text,customer:r.customer,payment:r.payment,items:r.items,subtotal:r.subtotal,discType:r.disc_type,discValue:r.disc_value,discount:r.discount,total:r.total,returns:r.refunds,cashier:r.cashier||''}}
+function invToRow(i,wc){const o={id:i.id,inv_no:i.no,ts:i.ts,date_text:i.date,customer:i.customer,payment:i.payment,items:i.items,subtotal:i.subtotal,disc_type:i.discType,disc_value:i.discValue,discount:i.discount,total:i.total,refunds:i.returns};if(wc)o.cashier=i.cashier||'';return o}
 
 async function fetchAll(table,orders){
   const out=[];
@@ -401,14 +413,14 @@ async function refresh(){
   db.products=n.products;db.factories=n.factories;db.invoices=n.invoices;
   await refreshInst();
 }
-async function reloadData(){const ok=await run(async()=>{await refresh();return true});if(ok)render()}
+async function reloadData(){const ok=await run(async()=>{await refresh();await loadProfile();return true});if(ok)render()}
 
 /* رفع بيانات (نسخة احتياطية أو بيانات قديمة) للداتا بيز */
 async function importData(n){
   const chunk=(a,s)=>{const o=[];for(let i=0;i<a.length;i+=s)o.push(a.slice(i,i+s));return o};
   if(n.factories.length){const r=await sb.from('factories').upsert(n.factories.map(name=>({name})),{onConflict:'name',ignoreDuplicates:true});if(r.error)throw r.error}
   for(const c of chunk(n.products,500)){const r=await sb.from('products').upsert(c,{onConflict:'id'});if(r.error)throw r.error}
-  for(const c of chunk(n.invoices,200)){const r=await sb.from('invoices').upsert(c.map(invToRow),{onConflict:'id',ignoreDuplicates:true});if(r.error)throw r.error}
+  for(const c of chunk(n.invoices,200)){const r=await sb.from('invoices').upsert(c.map(x=>invToRow(x,db.profOk)),{onConflict:'id',ignoreDuplicates:true});if(r.error)throw r.error}
   const r=await sb.rpc('fix_sequences');if(r.error)throw r.error;
 }
 function legacyData(){
@@ -437,7 +449,7 @@ async function doLogin(){
 async function logout(){
   if(!sb)return;
   await sb.auth.signOut();
-  db.products=[];db.invoices=[];db.factories=[];db.plans=[];db.dues=[];db.ipays=[];db.instOk=false;cart=[];
+  db.products=[];db.invoices=[];db.factories=[];db.plans=[];db.dues=[];db.ipays=[];db.instOk=false;db.profile=null;db.profiles=[];db.profOk=false;cart=[];
   showLogin('');
 }
 async function enterApp(){
@@ -445,6 +457,7 @@ async function enterApp(){
   el('app').innerHTML=`<p class="muted">${t('loading')}</p>`;
   try{
     await refresh();
+    await loadProfile();
     if(!db.products.length&&!db.invoices.length){
       const n=legacyData();
       if(n&&confirm(t('legacyFound'))){
@@ -486,8 +499,8 @@ function applyLanguage(){
 }
 function showPage(p){currentPage=p;render()}
 function render(){
-  applyLanguage();
-  const pages={dashboard,products,sales,stock,factories,reports,installments,settings};
+  applyLanguage();applyProfileUI();
+  const pages={dashboard,products,sales,stock,factories,reports,installments,settings,profile:profilePage};
   (pages[currentPage]||dashboard)();
 }
 function toggleLanguage(){db.lang=db.lang==='ar'?'en':'ar';saveLang();render()}
@@ -506,7 +519,7 @@ function products(){
 }
 function drawProducts(q){
   const a=db.products.filter(p=>(p.code+' '+p.name+' '+p.factory+' '+p.category).toLowerCase().includes(q.toLowerCase()));
-  el('productsTable').innerHTML=tbl(`<tr><th>${t('code')}</th><th>${t('name')}</th><th>${t('category')}</th><th>${t('factory')}</th><th>${t('size')}</th><th>${t('price')}</th><th>${t('qty')}</th><th>${t('action')}</th></tr>${a.map(p=>`<tr><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${categoryLabel(p.category)}</td><td>${esc(p.factory)}</td><td>${esc(p.size)}</td><td>${money(p.price)}</td><td class="${p.qty<=5?'low':''}">${p.qty}</td><td class="nowrap"><button onclick="editProduct('${p.id}')">${t('edit')}</button> <button class="danger" onclick="deleteProduct('${p.id}')">${t('del')}</button></td></tr>`).join('')}`);
+  el('productsTable').innerHTML=tbl(`<tr><th>${t('code')}</th><th>${t('name')}</th><th>${t('category')}</th><th>${t('factory')}</th><th>${t('size')}</th><th>${t('price')}</th><th>${t('qty')}</th><th>${t('action')}</th></tr>${a.map(p=>`<tr><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${categoryLabel(p.category)}</td><td>${esc(p.factory)}</td><td>${esc(p.size)}</td><td>${money(p.price)}</td><td class="${p.qty<=5?'low':''}">${p.qty}</td><td class="nowrap"><button onclick="editProduct('${p.id}')">${t('edit')}</button> ${delBtn("deleteProduct('"+p.id+"')",t('del'))}</td></tr>`).join('')}`);
 }
 function openProductModal(p=null){
   editingId=p?p.id:null;
@@ -529,6 +542,7 @@ async function saveProduct(){
 }
 function editProduct(id){const p=db.products.find(x=>x.id===id);if(p)openProductModal(p)}
 async function deleteProduct(id){
+  if(!needOwner())return;
   if(!confirm(t('deleteConfirm')))return;
   const ok=await run(async()=>{const r=await sb.from('products').delete().eq('id',id);if(r.error)throw r.error;await refresh();return true});
   if(ok)render();
@@ -630,12 +644,12 @@ function openInvoice(id){
   const rets=inv.returns.map(r=>`<div>${esc(r.ts?new Date(r.ts).toLocaleString(locale()):'')} — ${r.items.map(z=>esc((inv.items[z.i]||{}).name||'')+' × '+z.q).join('، ')} — <b>${money(r.amount)}</b></div>`).join('');
   const ra=returnedAmount(inv);
   el('invBody').innerHTML=`<h2>${t('invoiceNo')} ${inv.no}</h2>
-  <div class="inv-meta"><div>${t('date')}: <b>${esc(fmtInv(inv))}</b></div><div>${t('customer')}: <b>${esc(inv.customer||t('walkIn'))}</b></div><div>${t('payment')}: <b>${payLabel(inv.payment)}</b></div></div>
+  <div class="inv-meta"><div>${t('date')}: <b>${esc(fmtInv(inv))}</b></div><div>${t('customer')}: <b>${esc(inv.customer||t('walkIn'))}</b></div><div>${t('payment')}: <b>${payLabel(inv.payment)}</b></div>${inv.cashier?`<div>${t('cashier')}: <b>${esc(inv.cashier)}</b></div>`:''}</div>
   ${canReturn?`<div class="hint">${t('returnHint')}</div>`:''}
   <div class="retitems">${rows}</div>
   <div class="totals"><div>${t('subtotal')}: <b>${money(inv.subtotal)}</b></div>${inv.discount>0?`<div>${t('discount')}${inv.discType==='percent'&&inv.discValue>0?' ('+inv.discValue+'%)':''}: <b>- ${money(inv.discount)}</b></div>`:''}<div class="grand">${t('total')}: <b>${money(inv.total)}</b></div>${ra>0?`<div>${t('refund')}: <b>- ${money(ra)}</b></div><div class="grand">${t('netTotal')}: <b>${money(netOf(inv))}</b></div>`:''}</div>
   ${rets?`<h3>${t('returnsTitle')}</h3><div class="totals" style="max-width:none">${rets}</div>`:''}
-  <div class="actions">${canReturn?`<button class="primary" onclick="registerReturn(${inv.id})">${t('registerReturn')}</button><button onclick="returnAll(${inv.id})">${t('returnAll')}</button>`:''}<button onclick="printInvoiceById(${inv.id})">${t('print')}</button><button class="danger" onclick="deleteInvoice(${inv.id})">${t('deleteInvoice')}</button><button onclick="closeInvoiceModal()">${t('close')}</button></div>`;
+  <div class="actions">${canReturn?`<button class="primary" onclick="registerReturn(${inv.id})">${t('registerReturn')}</button><button onclick="returnAll(${inv.id})">${t('returnAll')}</button>`:''}<button onclick="printInvoiceById(${inv.id})">${t('print')}</button>${delBtn('deleteInvoice('+inv.id+')',t('deleteInvoice'))}<button onclick="closeInvoiceModal()">${t('close')}</button></div>`;
   el('invModal').classList.remove('hidden');
 }
 function closeInvoiceModal(){el('invModal').classList.add('hidden')}
@@ -661,6 +675,7 @@ function returnAll(id){
   registerReturn(id);
 }
 async function deleteInvoice(id){
+  if(!needOwner())return;
   const inv=db.invoices.find(i=>i.id===id);if(!inv)return;
   if(!confirm(t('confirmDeleteInvoice').replace('{n}',inv.no)))return;
   const missing=await run(async()=>{const r=await sb.rpc('delete_invoice',{p_id:id});if(r.error)throw r.error;await refresh();return r.data||[]});
@@ -673,7 +688,7 @@ async function deleteInvoice(id){
 function invoiceHTML(inv){
   const ra=returnedAmount(inv);
   return `<div class="printbox"><svg class="printlogo" viewBox="0 0 200 130" role="img" aria-label="ElShal Store" style="direction:ltr;"><g transform="translate(60 2) scale(0.66)" fill="none" stroke="#111111" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M60 40 V32 C60 32 72 30 72 20 C72 12 66 8 60 8 C54 8 49 12 49 17"/><path d="M60 40 L10 66 Q4 70 10 76 H110 Q116 70 110 66 Z"/></g><text x="100" y="98" text-anchor="middle" font-family="Cairo,Tahoma,Arial,sans-serif" font-weight="800" font-size="32" fill="#111111">ElShal</text><text x="103" y="121" text-anchor="middle" font-family="Montserrat,Arial,sans-serif" font-weight="500" font-size="11" letter-spacing="6" fill="#111111">STORE</text></svg><p class="sub">${t('invoiceNo')} ${inv.no}</p>
-  <div>${t('date')}: <b>${esc(fmtInv(inv))}</b></div><div>${t('customer')}: <b>${esc(inv.customer||t('walkIn'))}</b></div><div>${t('payment')}: <b>${payLabel(inv.payment)}</b></div>
+  <div>${t('date')}: <b>${esc(fmtInv(inv))}</b></div><div>${t('customer')}: <b>${esc(inv.customer||t('walkIn'))}</b></div><div>${t('payment')}: <b>${payLabel(inv.payment)}</b></div>${inv.cashier?`<div>${t('cashier')}: <b>${esc(inv.cashier)}</b></div>`:''}
   <table><tr><th>${t('name')}</th><th>${t('price')}</th><th>${t('qty')}</th><th>${t('total')}</th></tr>${inv.items.map(x=>`<tr><td>${esc(x.name)}</td><td>${money(x.price)}</td><td>${x.q}</td><td>${money(x.price*x.q)}</td></tr>`).join('')}</table>
   <div class="sum">${inv.discount>0?`<div><span>${t('subtotal')}</span><span>${money(inv.subtotal)}</span></div><div><span>${t('discount')}${inv.discType==='percent'&&inv.discValue>0?' ('+inv.discValue+'%)':''}</span><span>- ${money(inv.discount)}</span></div>`:''}<div class="grand"><span>${t('total')}</span><span>${money(inv.total)}</span></div>${ra>0?`<div><span>${t('refund')}</span><span>- ${money(ra)}</span></div><div class="grand"><span>${t('netTotal')}</span><span>${money(netOf(inv))}</span></div>`:''}</div></div>`;
 }
@@ -683,7 +698,7 @@ function printInvoiceById(id){const inv=db.invoices.find(i=>i.id===id);if(inv)pr
 /* ---------- المصانع ---------- */
 function factories(){
   const c={};db.products.forEach(p=>c[p.factory]=(c[p.factory]||0)+1);
-  el('app').innerHTML=`<div class="toolbar"><input id="newFactory" placeholder="${t('factoryName')}"><button class="primary" onclick="addFactory()">${t('addFactory')}</button></div>${tbl(`<tr><th>${t('factory')}</th><th>${t('factoryCount')}</th><th>${t('action')}</th></tr>${db.factories.map((f,i)=>`<tr><td>${esc(f)}</td><td>${c[f]||0}</td><td class="nowrap"><button onclick="editFactory(${i})">${t('edit')}</button> <button class="danger" onclick="deleteFactory(${i})">${t('del')}</button></td></tr>`).join('')}`)}`;
+  el('app').innerHTML=`<div class="toolbar"><input id="newFactory" placeholder="${t('factoryName')}"><button class="primary" onclick="addFactory()">${t('addFactory')}</button></div>${tbl(`<tr><th>${t('factory')}</th><th>${t('factoryCount')}</th><th>${t('action')}</th></tr>${db.factories.map((f,i)=>`<tr><td>${esc(f)}</td><td>${c[f]||0}</td><td class="nowrap"><button onclick="editFactory(${i})">${t('edit')}</button> ${delBtn('deleteFactory('+i+')',t('del'))}</td></tr>`).join('')}`)}`;
 }
 async function addFactory(){
   const v=el('newFactory').value.trim();
@@ -703,6 +718,7 @@ async function editFactory(i){
   if(ok)render();
 }
 async function deleteFactory(i){
+  if(!needOwner())return;
   const f=db.factories[i];if(f===undefined)return;
   if(db.products.some(p=>p.factory===f)){alert(t('factoryHasProducts'));return}
   if(!confirm(t('deleteFactoryConfirm')))return;
@@ -926,7 +942,7 @@ function monthlyReport(){
 /* ---------- النسخ الاحتياطي والاستعادة ---------- */
 function backupData(){
   const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([JSON.stringify(db,null,2)],{type:'application/json'}));
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(db,(k,v)=>(k==='profile'||k==='profiles'||k==='profOk')?undefined:v,2)],{type:'application/json'}));
   a.download='shal-store-backup.json';
   document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
@@ -934,6 +950,7 @@ function backupData(){
 el('restoreFile').addEventListener('change',e=>{
   const f=e.target.files[0];if(!f)return;
   e.target.value='';
+  if(!needOwner())return;
   const r=new FileReader();
   r.onload=async()=>{
     let n;
@@ -970,6 +987,124 @@ function settings(){
   <label>${t('theme')}<select onchange="setTheme(this.value)"><option value="light" ${theme==='light'?'selected':''}>${t('themeLight')}</option><option value="dark" ${theme==='dark'?'selected':''}>${t('themeDark')}</option></select></label>
   </div></div>`;
 }
+/* ---------- البروفايل والأدوار ---------- */
+Object.assign(T.ar,{profile:'الملف الشخصي',profName:'الاسم',profPhone:'رقم التليفون',profRole:'الدور',roleOwner:'مالك',roleEmployee:'موظف',
+ profSave:'حفظ البيانات',profSaved:'تم حفظ البيانات',profChoosePhoto:'اختيار صورة',profRemovePhoto:'حذف الصورة',profBadImage:'الملف ده مش صورة صالحة',profNameEmpty:'اكتب الاسم',
+ profPassTitle:'تغيير كلمة المرور',profNewPass:'كلمة المرور الجديدة',profConfirmPass:'تأكيد كلمة المرور',profChangePass:'تغيير كلمة المرور',profPassShort:'كلمة المرور لازم تكون 6 حروف على الأقل',profPassMismatch:'كلمتا المرور مش متطابقتين',profPassChanged:'تم تغيير كلمة المرور',
+ profTeam:'المستخدمين',profAddHint:'علشان تضيف مستخدم جديد: Supabase ← Authentication ← Users ← Add user. بيتعمله بروفايل أوتوماتيك بدور موظف.',
+ profNotReady:'مش قادر أحمّل البروفايلات. اتأكد إنك شغّلت ملف profiles.sql في Supabase.',profLastOwner:'لازم يفضل مالك واحد على الأقل',profNoPerm:'الإجراء ده للمالك فقط',cashier:'الكاشير'});
+Object.assign(T.en,{profile:'Profile',profName:'Name',profPhone:'Phone',profRole:'Role',roleOwner:'Owner',roleEmployee:'Employee',
+ profSave:'Save',profSaved:'Saved',profChoosePhoto:'Choose photo',profRemovePhoto:'Remove photo',profBadImage:'That file is not a valid image',profNameEmpty:'Enter a name',
+ profPassTitle:'Change password',profNewPass:'New password',profConfirmPass:'Confirm password',profChangePass:'Change password',profPassShort:'Password must be at least 6 characters',profPassMismatch:'Passwords do not match',profPassChanged:'Password changed',
+ profTeam:'Users',profAddHint:'To add a user: Supabase → Authentication → Users → Add user. A profile with the Employee role is created automatically.',
+ profNotReady:'Could not load profiles. Make sure you ran profiles.sql in Supabase.',profLastOwner:'At least one owner must remain',profNoPerm:'This action is for the owner only',cashier:'Cashier'});
+
+let profDraft={avatar:null};
+function normProfile(r){return {id:r.id,email:r.email||'',name:r.name||'',phone:r.phone||'',avatar:/^data:image\//.test(r.avatar||'')?r.avatar:null,role:r.role==='owner'?'owner':'employee'}}
+/* لو الجدول لسه مش موجود (profiles.sql ماتشغّلش) التطبيق يفضل شغال زي الأول بصلاحيات كاملة */
+function isOwner(){return !db.profile||db.profile.role==='owner'}
+function needOwner(){if(isOwner())return true;alert(t('profNoPerm'));return false}
+function delBtn(onclick,label){return isOwner()?`<button class="danger" onclick="${onclick}">${label}</button>`:''}
+function roleLabel(r){return t(r==='owner'?'roleOwner':'roleEmployee')}
+function avatarHTML(u,cls){const ini=String(u.name||u.email||'?').trim().charAt(0).toUpperCase()||'?';return `<span class="av ${cls||''}">${u.avatar?`<img src="${esc(u.avatar)}" alt="">`:esc(ini)}</span>`}
+async function loadProfile(){
+  db.profOk=false;db.profile=null;db.profiles=[];
+  let u=null;
+  try{const {data}=await sb.auth.getSession();u=data&&data.session&&data.session.user}catch(e){}
+  if(!u)return;
+  try{
+    let r=await sb.from('profiles').select('*').eq('id',u.id).maybeSingle();
+    if(r.error)throw r.error;
+    if(!r.data){
+      const ins=await sb.from('profiles').insert({id:u.id,email:u.email,name:String(u.email||'').split('@')[0],role:'employee'});
+      if(ins.error)throw ins.error;
+      r=await sb.from('profiles').select('*').eq('id',u.id).maybeSingle();
+      if(r.error||!r.data)throw (r.error||new Error('NOPROFILE'));
+    }
+    db.profile=normProfile(r.data);db.profOk=true;db.profiles=[db.profile];
+    if(db.profile.role==='owner'){
+      const a=await sb.from('profiles').select('*').order('created_at');
+      if(!a.error&&a.data)db.profiles=a.data.map(normProfile);
+    }
+  }catch(e){
+    const missing=!!e&&(e.code==='PGRST205'||e.code==='42P01'||/does not exist|schema cache/i.test(String(e.message||'')));
+    db.profile={id:u.id,email:u.email||'',name:String(u.email||'').split('@')[0],phone:'',avatar:null,role:missing?'owner':'employee'};
+    db.profOk=false;db.profiles=[];
+  }
+}
+function applyProfileUI(){
+  const b=el('profileBtn'),p=db.profile;
+  if(b){b.classList.toggle('hidden',!p);if(p){el('profAv').innerHTML=p.avatar?`<img src="${esc(p.avatar)}" alt="">`:esc(String(p.name||p.email||'?').trim().charAt(0).toUpperCase()||'?');el('profNameChip').textContent=p.name||p.email}}
+  const own=isOwner();
+  el('backupBtn').classList.toggle('hidden',!own);el('restoreLabel').classList.toggle('hidden',!own);
+}
+function drawPfAvatar(){const p=db.profile;el('pfAv').innerHTML=avatarHTML({name:p.name,email:p.email,avatar:profDraft.avatar},'lg')}
+function pickAvatar(inp){
+  const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
+  if(!/^image\//.test(f.type)){alert(t('profBadImage'));return}
+  const img=new Image(),url=URL.createObjectURL(f);
+  img.onload=()=>{
+    const S=160,c=document.createElement('canvas');c.width=c.height=S;
+    const m=Math.min(img.width,img.height);
+    c.getContext('2d').drawImage(img,(img.width-m)/2,(img.height-m)/2,m,m,0,0,S,S);
+    URL.revokeObjectURL(url);
+    profDraft.avatar=c.toDataURL('image/jpeg',0.82);drawPfAvatar();
+  };
+  img.onerror=()=>{URL.revokeObjectURL(url);alert(t('profBadImage'))};
+  img.src=url;
+}
+function clearAvatar(){profDraft.avatar=null;drawPfAvatar()}
+async function saveProfile(){
+  const name=el('pfName').value.trim(),phone=el('pfPhone').value.trim();
+  el('profErr').textContent='';
+  if(!name){el('profErr').textContent=t('profNameEmpty');return}
+  const ok=await run(async()=>{
+    const r=await sb.from('profiles').update({name,phone,avatar:profDraft.avatar||null}).eq('id',db.profile.id).select().single();
+    if(r.error)throw r.error;
+    const np=normProfile(r.data);db.profile=np;
+    db.profiles=db.profiles.map(x=>x.id===np.id?np:x);
+    return true;
+  });
+  if(ok){applyProfileUI();alert(t('profSaved'))}
+}
+async function changePassword(){
+  const a=el('pfPass').value,b=el('pfPass2').value;
+  if(a.length<6){alert(t('profPassShort'));return}
+  if(a!==b){alert(t('profPassMismatch'));return}
+  const ok=await run(async()=>{const r=await sb.auth.updateUser({password:a});if(r.error)throw r.error;return true});
+  if(ok){el('pfPass').value='';el('pfPass2').value='';alert(t('profPassChanged'))}
+}
+async function setUserRole(id,role){
+  await run(async()=>{const r=await sb.from('profiles').update({role}).eq('id',id);if(r.error)throw r.error;await loadProfile();return true});
+  render();
+}
+function profilePage(){
+  const p=db.profile;if(!p){el('app').innerHTML='';return}
+  profDraft={avatar:p.avatar||null};
+  const team=(p.role==='owner'&&db.profOk)?`<div class="panel"><h2>👥 ${t('profTeam')}</h2><div class="hint">${t('profAddHint')}</div>${tbl(`<tr><th></th><th>${t('profName')}</th><th>${t('email')}</th><th>${t('profPhone')}</th><th>${t('profRole')}</th></tr>${db.profiles.map(u=>`<tr><td>${avatarHTML(u,'sm')}</td><td>${esc(u.name)}</td><td dir="ltr">${esc(u.email)}</td><td dir="ltr">${esc(u.phone)}</td><td><select onchange="setUserRole('${esc(u.id)}',this.value)"><option value="owner" ${u.role==='owner'?'selected':''}>${t('roleOwner')}</option><option value="employee" ${u.role==='employee'?'selected':''}>${t('roleEmployee')}</option></select></td></tr>`).join('')}`)}</div>`:'';
+  el('app').innerHTML=`${db.profOk?'':`<div class="hint">${t('profNotReady')}</div>`}
+  <div class="panel"><h2>👤 ${t('profile')}</h2>
+    <div class="profbox"><div id="pfAv"></div><div class="actions"><label class="restore">${t('profChoosePhoto')}<input type="file" accept="image/*" onchange="pickAvatar(this)"></label><button type="button" onclick="clearAvatar()">${t('profRemovePhoto')}</button></div></div>
+    <div id="profErr" class="error"></div>
+    <div class="grid2">
+      <label>${t('profName')}<input id="pfName" value="${esc(p.name)}" maxlength="60" autocomplete="name"></label>
+      <label>${t('profPhone')}<input id="pfPhone" type="tel" inputmode="tel" dir="ltr" value="${esc(p.phone)}" maxlength="30" autocomplete="tel"></label>
+      <label>${t('email')}<input value="${esc(p.email)}" dir="ltr" readonly></label>
+      <label>${t('profRole')}<input value="${esc(roleLabel(p.role))}" readonly></label>
+    </div>
+    <button class="primary" onclick="saveProfile()" ${db.profOk?'':'disabled'}>${t('profSave')}</button>
+  </div>
+  <div class="panel"><h2>🔑 ${t('profPassTitle')}</h2>
+    <div class="grid2">
+      <label>${t('profNewPass')}<input id="pfPass" type="password" autocomplete="new-password"></label>
+      <label>${t('profConfirmPass')}<input id="pfPass2" type="password" autocomplete="new-password"></label>
+    </div>
+    <button class="primary" onclick="changePassword()">${t('profChangePass')}</button>
+  </div>
+  ${team}`;
+  drawPfAvatar();
+}
+
 /* ---------- الأقساط ---------- */
 Object.assign(T.ar,{installments:'الأقساط',sellInstallment:'بيع بالقسط',downPayment:'المقدم',instCount:'عدد الأقساط',instEvery:'كل',unitMonth:'شهر',unitWeek:'أسبوع',unitDay:'يوم',firstDue:'تاريخ أول قسط',
  instNeedCustomer:'اكتب اسم العميل علشان تبيع بالقسط',instDownInvalid:'المقدم غير صحيح',instDownTooMuch:'المقدم لازم يكون أقل من إجمالي الفاتورة',instCountInvalid:'عدد الأقساط غير صحيح',instEveryInvalid:'المدة بين الأقساط غير صحيحة',instDateInvalid:'تاريخ أول قسط غير صحيح',
@@ -1115,13 +1250,13 @@ function openPlan(id){
     const cls=done?(full?'ok':''):(r.date<today?'warn':'mid');
     return `<tr><td>${r.seq}</td><td>${fmtDate(r.date)}</td><td>${money(r.amount)}</td><td>${money(r.paid)}</td><td>${money(r.left)}</td><td><span class="badge ${cls}">${t(st)}</span></td></tr>`;
   }).join('');
-  const pays=v.pays.map(p=>`<div class="retitem"><div>${esc(new Date(p.ts).toLocaleString(locale()))} — <b>${money(p.amount)}</b>${p.note?' — '+esc(p.note):''}</div><button class="danger" onclick="deleteInstPayment(${p.id},${pl.id})">${t('inDelete')}</button></div>`).join('');
+  const pays=v.pays.map(p=>`<div class="retitem"><div>${esc(new Date(p.ts).toLocaleString(locale()))} — <b>${money(p.amount)}</b>${p.note?' — '+esc(p.note):''}</div>${delBtn('deleteInstPayment('+p.id+','+pl.id+')',t('inDelete'))}</div>`).join('');
   el('invBody').innerHTML=`<h2>${t('installmentPlan')}${v.inv?' — '+t('invoiceNo')+' '+v.inv.no:''}</h2>
   <div class="inv-meta"><div>${t('customer')}: <b>${esc(pl.customer)}</b></div>${pl.note?`<div>${t('inNote')}: <b>${esc(pl.note)}</b></div>`:''}<div>${v.inv?t('inNet'):t('inTotalDebt')}: <b>${money(v.net)}</b></div><div>${v.inv?t('downPayment'):t('inPaidBefore')}: <b>${money(pl.down)}</b></div><div>${t('inFinanced')}: <b>${money(pl.financed)}</b></div><div>${t('inPaid')}: <b>${money(v.paid)}</b></div><div>${t('inRemaining')}: <b>${money(v.owed)}</b> ${statusBadge(v.status)}</div></div>
   <h3>${t('inSchedule')}</h3>${tbl(`<tr><th>#</th><th>${t('inDueDate')}</th><th>${t('inAmount')}</th><th>${t('inPaid')}</th><th>${t('inRemaining')}</th><th>${t('inStatus')}</th></tr>${rows}`)}
   ${v.owed>0.004?`<h3>${t('inRecordPay')}</h3><div class="grid2"><label>${t('inPayAmount')}<input id="ipAmt" type="number" min="0" step="0.01" value="${v.next?v.next.left:v.owed}"></label><label>${t('inPayNote')}<input id="ipNote"></label></div><div class="actions"><button class="primary" onclick="addInstPayment(${pl.id})">${t('inRecordPay')}</button><button onclick="el('ipAmt').value=${v.owed}">${t('inPayAll')}</button></div>`:''}
   ${pays?`<h3>${t('inPaysLog')}</h3><div class="retitems">${pays}</div>`:''}
-  <div class="actions" style="margin-top:12px">${v.inv?`<button onclick="openInvoice(${v.inv.id})">${t('inOpenInvoice')}</button>`:''}<button class="danger" onclick="deleteInstPlan(${pl.id})">${t('inDeletePlan')}</button></div>`;
+  <div class="actions" style="margin-top:12px">${v.inv?`<button onclick="openInvoice(${v.inv.id})">${t('inOpenInvoice')}</button>`:''}${delBtn('deleteInstPlan('+pl.id+')',t('inDeletePlan'))}</div>`;
   el('invModal').classList.remove('hidden');
 }
 function openNewPlan(){
@@ -1172,6 +1307,7 @@ async function saveNewPlan(){
   if(ok){render();closeInvoiceModal();alert(t('inPlanSaved'))}
 }
 async function deleteInstPlan(id){
+  if(!needOwner())return;
   if(!confirm(t('inConfirmDelPlan')))return;
   const ok=await run(async()=>{const r=await sb.from('installment_plans').delete().eq('id',id);if(r.error)throw r.error;await refresh();return true});
   if(ok){render();closeInvoiceModal()}
@@ -1185,6 +1321,7 @@ async function addInstPayment(id){
   if(ok){render();openPlan(id);alert(t('inPaySaved'))}
 }
 async function deleteInstPayment(pid,planId){
+  if(!needOwner())return;
   if(!confirm(t('inConfirmDelPay')))return;
   const ok=await run(async()=>{const r=await sb.from('installment_payments').delete().eq('id',pid);if(r.error)throw r.error;await refresh();return true});
   if(ok){render();openPlan(planId)}
