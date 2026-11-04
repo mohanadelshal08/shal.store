@@ -216,11 +216,11 @@ details.vtable summary{cursor:pointer;margin:12px 0;color:var(--ink2)}
 <button class="close" type="button" onclick="closeProductModal()">×</button>
 <h2 id="modalTitle">إضافة / تعديل منتج</h2>
 <div id="formError" class="error"></div>
-<label id="lblCode">الكود<input id="f_code" autocomplete="off"></label>
+<label id="lblCode">الكود<input id="f_code" autocomplete="off" inputmode="numeric" pattern="[0-9]*" oninput="this.value=this.value.replace(/\D/g,'')"></label>
 <label id="lblName">اسم المنتج<input id="f_name" autocomplete="off"></label>
 <label id="lblCategory">التصنيف<input id="f_category" autocomplete="off"></label>
 <label id="lblFactory">المصنع<input id="f_factory" autocomplete="off"></label>
-<label id="lblSize">المقاس<input id="f_size" autocomplete="off"></label>
+<label id="lblSize">المقاس<select id="f_size"></select></label>
 <label id="lblPrice">السعر<input id="f_price" type="number" min="0" step="1"></label>
 <label id="lblQty">الكمية<input id="f_qty" type="number" min="0" step="1"></label>
 <button id="saveProductBtn" class="primary savebtn" type="button" onclick="saveProduct()">حفظ المنتج</button>
@@ -523,13 +523,18 @@ function drawProducts(q){
 }
 function openProductModal(p=null){
   editingId=p?p.id:null;
-  el('f_code').value=p?p.code:'';el('f_name').value=p?p.name:'';el('f_category').value=p?p.category:'';el('f_factory').value=p?p.factory:'';el('f_size').value=p?p.size:'';el('f_price').value=p?p.price:'';el('f_qty').value=p?p.qty:'';
+  el('f_code').value=p?p.code:'';el('f_name').value=p?p.name:'';el('f_category').value=p?p.category:'';el('f_factory').value=p?p.factory:'';setSizeOptions(p?p.size:'');el('f_price').value=p?p.price:'';el('f_qty').value=p?p.qty:'';
   el('formError').textContent='';el('modal').classList.remove('hidden');setTimeout(()=>el('f_code').focus(),50);
 }
+const SIZES=['L','XL','2XL','3XL','4XL','5XL','6XL','7XL'];
+/* لو منتج قديم مقاسه برّه القايمة بيفضل ظاهر علشان التعديل ما يمسحوش */
+function setSizeOptions(cur){const l=SIZES.slice();if(cur&&!l.includes(cur))l.unshift(cur);el('f_size').innerHTML='<option value=""></option>'+l.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');el('f_size').value=cur||''}
 function closeProductModal(){el('modal').classList.add('hidden');editingId=null}
 async function saveProduct(){
   const code=el('f_code').value.trim(),name=el('f_name').value.trim(),category=el('f_category').value.trim(),factory=el('f_factory').value.trim(),size=el('f_size').value.trim(),price=Number(el('f_price').value),qty=Number(el('f_qty').value);
   if(!code||!name||!category||!factory||!size||el('f_price').value===''||el('f_qty').value===''){el('formError').textContent=t('fillAll');return}
+  const orig=editingId?db.products.find(x=>x.id===editingId):null;
+  if(!/^\d+$/.test(code)&&!(orig&&orig.code===code)){el('formError').textContent=t('codeDigits');return}
   if(!Number.isFinite(price)||price<0||!Number.isInteger(qty)||qty<0){el('formError').textContent=t('numbers');return}
   const id=editingId||('p_'+Date.now()+'_'+Math.random().toString(36).slice(2,8));
   const product={id,code,name,category,factory,size,price,qty};
@@ -988,12 +993,12 @@ function settings(){
   </div></div>`;
 }
 /* ---------- البروفايل والأدوار ---------- */
-Object.assign(T.ar,{profile:'الملف الشخصي',profName:'الاسم',profPhone:'رقم التليفون',profRole:'الدور',roleOwner:'مالك',roleEmployee:'موظف',
+Object.assign(T.ar,{codeDigits:'الكود لازم يكون أرقام فقط',profile:'الملف الشخصي',profName:'الاسم',profPhone:'رقم التليفون',profRole:'الدور',roleOwner:'مالك',roleEmployee:'موظف',
  profSave:'حفظ البيانات',profSaved:'تم حفظ البيانات',profChoosePhoto:'اختيار صورة',profRemovePhoto:'حذف الصورة',profBadImage:'الملف ده مش صورة صالحة',profNameEmpty:'اكتب الاسم',
  profPassTitle:'تغيير كلمة المرور',profNewPass:'كلمة المرور الجديدة',profConfirmPass:'تأكيد كلمة المرور',profChangePass:'تغيير كلمة المرور',profPassShort:'كلمة المرور لازم تكون 6 حروف على الأقل',profPassMismatch:'كلمتا المرور مش متطابقتين',profPassChanged:'تم تغيير كلمة المرور',
  profTeam:'المستخدمين',profAddHint:'علشان تضيف مستخدم جديد: Supabase ← Authentication ← Users ← Add user. بيتعمله بروفايل أوتوماتيك بدور موظف.',
  profNotReady:'مش قادر أحمّل البروفايلات. اتأكد إنك شغّلت ملف profiles.sql في Supabase.',profLastOwner:'لازم يفضل مالك واحد على الأقل',profNoPerm:'الإجراء ده للمالك فقط',cashier:'الكاشير'});
-Object.assign(T.en,{profile:'Profile',profName:'Name',profPhone:'Phone',profRole:'Role',roleOwner:'Owner',roleEmployee:'Employee',
+Object.assign(T.en,{codeDigits:'Code must contain digits only',profile:'Profile',profName:'Name',profPhone:'Phone',profRole:'Role',roleOwner:'Owner',roleEmployee:'Employee',
  profSave:'Save',profSaved:'Saved',profChoosePhoto:'Choose photo',profRemovePhoto:'Remove photo',profBadImage:'That file is not a valid image',profNameEmpty:'Enter a name',
  profPassTitle:'Change password',profNewPass:'New password',profConfirmPass:'Confirm password',profChangePass:'Change password',profPassShort:'Password must be at least 6 characters',profPassMismatch:'Passwords do not match',profPassChanged:'Password changed',
  profTeam:'Users',profAddHint:'To add a user: Supabase → Authentication → Users → Add user. A profile with the Employee role is created automatically.',
