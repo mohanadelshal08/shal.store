@@ -526,7 +526,7 @@ function openProductModal(p=null){
   el('f_code').value=p?p.code:'';el('f_name').value=p?p.name:'';el('f_category').value=p?p.category:'';el('f_factory').value=p?p.factory:'';setSizeOptions(p?p.size:'');el('f_price').value=p?p.price:'';el('f_qty').value=p?p.qty:'';
   el('formError').textContent='';el('modal').classList.remove('hidden');setTimeout(()=>el('f_code').focus(),50);
 }
-const SIZES=['L','XL','2XL','3XL','4XL','5XL','6XL','7XL'];
+const SIZES=['S','M','L','XL','2XL','3XL','4XL','5XL','6XL','7XL'];
 /* لو منتج قديم مقاسه برّه القايمة بيفضل ظاهر علشان التعديل ما يمسحوش */
 function setSizeOptions(cur){const l=SIZES.slice();if(cur&&!l.includes(cur))l.unshift(cur);el('f_size').innerHTML='<option value=""></option>'+l.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');el('f_size').value=cur||''}
 function closeProductModal(){el('modal').classList.add('hidden');editingId=null}
