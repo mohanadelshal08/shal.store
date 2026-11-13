@@ -690,12 +690,50 @@ async function deleteInvoice(id){
 }
 
 /* الطباعة: الفاتورة بس */
+const LOGO_SVG=`<svg class="printlogo" viewBox="0 0 200 130" role="img" aria-label="ElShal Store" style="direction:ltr;"><g transform="translate(60 2) scale(0.66)" fill="none" stroke="#111111" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M60 40 V32 C60 32 72 30 72 20 C72 12 66 8 60 8 C54 8 49 12 49 17"/><path d="M60 40 L10 66 Q4 70 10 76 H110 Q116 70 110 66 Z"/></g><text x="100" y="98" text-anchor="middle" font-family="Cairo,Tahoma,Arial,sans-serif" font-weight="800" font-size="32" fill="#111111">ElShal</text><text x="103" y="121" text-anchor="middle" font-family="Montserrat,Arial,sans-serif" font-weight="500" font-size="11" letter-spacing="6" fill="#111111">STORE</text></svg>`;
+
+/* كشف دفعات القسط: المقدم + كل الدفعات، والرصيد المتبقي قبل وبعد كل دفعة.
+   hiId = الدفعة اللي لسه متسجلة (بتتعلّم في الكشف) */
+function instStatementHTML(v,hiId){
+  const pl=v.pl,rows=[];
+  let bal=v.net;
+  const down=round2(pl.down);
+  if(down>0){
+    const after=Math.max(0,round2(bal-down));
+    rows.push({lbl:t(v.inv?'downPayment':'inPaidBefore'),date:v.inv?fmtInv(v.inv):'-',amt:down,before:bal,after});
+    bal=after;
+  }
+  v.pays.forEach(p=>{
+    const after=Math.max(0,round2(bal-p.amount));
+    rows.push({lbl:(p.note||t('inPayN'))+(p.id===hiId?' ◀ '+t('inThisPay'):''),date:new Date(p.ts).toLocaleString(locale()),amt:p.amount,before:bal,after,hi:p.id===hiId});
+    bal=after;
+  });
+  const paidAll=round2(down+v.paid);
+  return `<h3 style="margin:16px 0 4px">${t('installmentPlan')}</h3>
+  <table><tr><th>#</th><th>${t('inDesc')}</th><th>${t('date')}</th><th>${t('inAmount')}</th><th>${t('inBefore')}</th><th>${t('inAfter')}</th></tr>${rows.map((r,i)=>`<tr${r.hi?' style="font-weight:bold"':''}><td>${i+1}</td><td>${esc(r.lbl)}</td><td>${esc(r.date)}</td><td>${money(r.amt)}</td><td>${money(r.before)}</td><td>${money(r.after)}</td></tr>`).join('')}</table>
+  <div class="sum"><div><span>${t('inNet')}</span><span>${money(v.net)}</span></div><div><span>${t('inPaidInclDown')}</span><span>${money(paidAll)}</span></div><div class="grand"><span>${t('inRemaining')}</span><span>${money(v.owed)}</span></div>${v.next?`<div><span>${t('inNextDue')}</span><span>${fmtDate(v.next.date)} — ${money(v.next.left)}</span></div>`:''}</div>`;
+}
+/* لو الفاتورة بقسط، الكشف بيتضاف تحت الفاتورة أوتوماتيك */
+function planLedgerHTML(inv){
+  const pl=(db.plans||[]).find(p=>p.invoice_id===inv.id);
+  return pl?instStatementHTML(planView(pl),null):'';
+}
+/* إيصال القسط: بيانات العميل + كشف الدفعات كله */
+function receiptHTML(v,hiId){
+  const pl=v.pl;
+  return `<div class="printbox">${LOGO_SVG}<p class="sub">${t('inReceipt')}${v.inv?' — '+t('invoiceNo')+' '+v.inv.no:''}</p>
+  <div>${t('date')}: <b>${esc(new Date().toLocaleString(locale()))}</b></div><div>${t('customer')}: <b>${esc(pl.customer||t('walkIn'))}</b></div>${pl.note?`<div>${t('inNote')}: <b>${esc(pl.note)}</b></div>`:''}${instStatementHTML(v,hiId)}</div>`;
+}
+function printInstReceipt(planId,hiId){
+  const pl=db.plans.find(p=>p.id===planId);if(!pl)return;
+  el('printArea').innerHTML=receiptHTML(planView(pl),hiId||null);window.print();
+}
 function invoiceHTML(inv){
   const ra=returnedAmount(inv);
-  return `<div class="printbox"><svg class="printlogo" viewBox="0 0 200 130" role="img" aria-label="ElShal Store" style="direction:ltr;"><g transform="translate(60 2) scale(0.66)" fill="none" stroke="#111111" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M60 40 V32 C60 32 72 30 72 20 C72 12 66 8 60 8 C54 8 49 12 49 17"/><path d="M60 40 L10 66 Q4 70 10 76 H110 Q116 70 110 66 Z"/></g><text x="100" y="98" text-anchor="middle" font-family="Cairo,Tahoma,Arial,sans-serif" font-weight="800" font-size="32" fill="#111111">ElShal</text><text x="103" y="121" text-anchor="middle" font-family="Montserrat,Arial,sans-serif" font-weight="500" font-size="11" letter-spacing="6" fill="#111111">STORE</text></svg><p class="sub">${t('invoiceNo')} ${inv.no}</p>
+  return `<div class="printbox">${LOGO_SVG}<p class="sub">${t('invoiceNo')} ${inv.no}</p>
   <div>${t('date')}: <b>${esc(fmtInv(inv))}</b></div><div>${t('customer')}: <b>${esc(inv.customer||t('walkIn'))}</b></div><div>${t('payment')}: <b>${payLabel(inv.payment)}</b></div>${inv.cashier?`<div>${t('cashier')}: <b>${esc(inv.cashier)}</b></div>`:''}
   <table><tr><th>${t('name')}</th><th>${t('price')}</th><th>${t('qty')}</th><th>${t('total')}</th></tr>${inv.items.map(x=>`<tr><td>${esc(x.name)}</td><td>${money(x.price)}</td><td>${x.q}</td><td>${money(x.price*x.q)}</td></tr>`).join('')}</table>
-  <div class="sum">${inv.discount>0?`<div><span>${t('subtotal')}</span><span>${money(inv.subtotal)}</span></div><div><span>${t('discount')}${inv.discType==='percent'&&inv.discValue>0?' ('+inv.discValue+'%)':''}</span><span>- ${money(inv.discount)}</span></div>`:''}<div class="grand"><span>${t('total')}</span><span>${money(inv.total)}</span></div>${ra>0?`<div><span>${t('refund')}</span><span>- ${money(ra)}</span></div><div class="grand"><span>${t('netTotal')}</span><span>${money(netOf(inv))}</span></div>`:''}</div></div>`;
+  <div class="sum">${inv.discount>0?`<div><span>${t('subtotal')}</span><span>${money(inv.subtotal)}</span></div><div><span>${t('discount')}${inv.discType==='percent'&&inv.discValue>0?' ('+inv.discValue+'%)':''}</span><span>- ${money(inv.discount)}</span></div>`:''}<div class="grand"><span>${t('total')}</span><span>${money(inv.total)}</span></div>${ra>0?`<div><span>${t('refund')}</span><span>- ${money(ra)}</span></div><div class="grand"><span>${t('netTotal')}</span><span>${money(netOf(inv))}</span></div>`:''}</div>${planLedgerHTML(inv)}</div>`;
 }
 function printInvoice(inv){el('printArea').innerHTML=invoiceHTML(inv);window.print()}
 function printInvoiceById(id){const inv=db.invoices.find(i=>i.id===id);if(inv)printInvoice(inv)}
@@ -1128,6 +1166,8 @@ Object.assign(T.en,{installments:'Installments',sellInstallment:'Sell on install
 
 Object.assign(T.ar,{inNewPlan:'قسط جديد',inTotalDebt:'إجمالي المبلغ',inPaidBefore:'المدفوع قبل كده',inNote:'ملاحظة / البيان',inNeedName:'اكتب اسم العميل',inTotalInvalid:'إجمالي المبلغ غير صحيح',inPaidTooMuch:'المدفوع قبل كده لازم يكون أقل من الإجمالي',inSavePlan:'حفظ القسط',inPlanSaved:'تم حفظ القسط',inDeletePlan:'حذف الخطة',inConfirmDelPlan:'حذف الخطة بكل دفعاتها؟ الفاتورة (لو موجودة) مش هتتأثر'});
 Object.assign(T.en,{inNewPlan:'New installment',inTotalDebt:'Total amount',inPaidBefore:'Already paid',inNote:'Note / description',inNeedName:'Enter the customer name',inTotalInvalid:'Invalid total amount',inPaidTooMuch:'Already paid must be less than the total',inSavePlan:'Save installment',inPlanSaved:'Installment saved',inDeletePlan:'Delete plan',inConfirmDelPlan:'Delete this plan with all its payments? The invoice (if any) is not affected'});
+Object.assign(T.ar,{inReceipt:'إيصال سداد قسط',inPrintStmt:'طباعة كشف الدفعات',inDesc:'البيان',inBefore:'المتبقي قبل',inAfter:'المتبقي بعد',inPayN:'دفعة قسط',inThisPay:'الدفعة الحالية'});
+Object.assign(T.en,{inReceipt:'Installment payment receipt',inPrintStmt:'Print payments statement',inDesc:'Description',inBefore:'Balance before',inAfter:'Balance after',inPayN:'Installment payment',inThisPay:'This payment'});
 let instFilter='active',instQuery='';
 function pad2(n){return String(n).padStart(2,'0')}
 function ymd(y,m0,d){return y+'-'+pad2(m0+1)+'-'+pad2(d)}
@@ -1255,13 +1295,13 @@ function openPlan(id){
     const cls=done?(full?'ok':''):(r.date<today?'warn':'mid');
     return `<tr><td>${r.seq}</td><td>${fmtDate(r.date)}</td><td>${money(r.amount)}</td><td>${money(r.paid)}</td><td>${money(r.left)}</td><td><span class="badge ${cls}">${t(st)}</span></td></tr>`;
   }).join('');
-  const pays=v.pays.map(p=>`<div class="retitem"><div>${esc(new Date(p.ts).toLocaleString(locale()))} — <b>${money(p.amount)}</b>${p.note?' — '+esc(p.note):''}</div>${delBtn('deleteInstPayment('+p.id+','+pl.id+')',t('inDelete'))}</div>`).join('');
+  const pays=v.pays.map(p=>`<div class="retitem"><div>${esc(new Date(p.ts).toLocaleString(locale()))} — <b>${money(p.amount)}</b>${p.note?' — '+esc(p.note):''}</div><div class="rctl"><button onclick="printInstReceipt(${pl.id},${p.id})">${t('print')}</button>${delBtn('deleteInstPayment('+p.id+','+pl.id+')',t('inDelete'))}</div></div>`).join('');
   el('invBody').innerHTML=`<h2>${t('installmentPlan')}${v.inv?' — '+t('invoiceNo')+' '+v.inv.no:''}</h2>
   <div class="inv-meta"><div>${t('customer')}: <b>${esc(pl.customer)}</b></div>${pl.note?`<div>${t('inNote')}: <b>${esc(pl.note)}</b></div>`:''}<div>${v.inv?t('inNet'):t('inTotalDebt')}: <b>${money(v.net)}</b></div><div>${v.inv?t('downPayment'):t('inPaidBefore')}: <b>${money(pl.down)}</b></div><div>${t('inFinanced')}: <b>${money(pl.financed)}</b></div><div>${t('inPaid')}: <b>${money(v.paid)}</b></div><div>${t('inRemaining')}: <b>${money(v.owed)}</b> ${statusBadge(v.status)}</div></div>
   <h3>${t('inSchedule')}</h3>${tbl(`<tr><th>#</th><th>${t('inDueDate')}</th><th>${t('inAmount')}</th><th>${t('inPaid')}</th><th>${t('inRemaining')}</th><th>${t('inStatus')}</th></tr>${rows}`)}
   ${v.owed>0.004?`<h3>${t('inRecordPay')}</h3><div class="grid2"><label>${t('inPayAmount')}<input id="ipAmt" type="number" min="0" step="0.01" value="${v.next?v.next.left:v.owed}"></label><label>${t('inPayNote')}<input id="ipNote"></label></div><div class="actions"><button class="primary" onclick="addInstPayment(${pl.id})">${t('inRecordPay')}</button><button onclick="el('ipAmt').value=${v.owed}">${t('inPayAll')}</button></div>`:''}
   ${pays?`<h3>${t('inPaysLog')}</h3><div class="retitems">${pays}</div>`:''}
-  <div class="actions" style="margin-top:12px">${v.inv?`<button onclick="openInvoice(${v.inv.id})">${t('inOpenInvoice')}</button>`:''}${delBtn('deleteInstPlan('+pl.id+')',t('inDeletePlan'))}</div>`;
+  <div class="actions" style="margin-top:12px"><button class="primary" onclick="printInstReceipt(${pl.id})">${t('inPrintStmt')}</button>${v.inv?`<button onclick="openInvoice(${v.inv.id})">${t('inOpenInvoice')}</button>`:''}${delBtn('deleteInstPlan('+pl.id+')',t('inDeletePlan'))}</div>`;
   el('invModal').classList.remove('hidden');
 }
 function openNewPlan(){
@@ -1322,8 +1362,14 @@ async function addInstPayment(id){
   const v=planView(pl),raw=el('ipAmt').value,amt=Number(raw),note=el('ipNote').value.trim();
   if(raw===''||!Number.isFinite(amt)||amt<=0){alert(t('inPayInvalid'));return}
   if(round2(amt)>v.owed+0.001){alert(t('inPayTooMuch')+': '+money(v.owed));return}
-  const ok=await run(async()=>{const r=await sb.from('installment_payments').insert({plan_id:id,amount:round2(amt),ts:Date.now(),note});if(r.error)throw r.error;await refresh();return true});
-  if(ok){render();openPlan(id);alert(t('inPaySaved'))}
+  const ts=Date.now();
+  const ok=await run(async()=>{const r=await sb.from('installment_payments').insert({plan_id:id,amount:round2(amt),ts,note});if(r.error)throw r.error;await refresh();return true});
+  if(ok){
+    render();openPlan(id);alert(t('inPaySaved'));
+    /* بعد التسجيل: اطبع الكشف كله والدفعة الجديدة معلّمة */
+    const np=db.ipays.find(p=>p.plan_id===id&&p.ts===ts);
+    printInstReceipt(id,np?np.id:null);
+  }
 }
 async function deleteInstPayment(pid,planId){
   if(!needOwner())return;
